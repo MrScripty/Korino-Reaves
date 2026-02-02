@@ -1,0 +1,39 @@
+# Shared Contracts Agent Completion Marker
+# Generated: 2026-02-02
+# Agent: 00-shared-contracts
+
+## Deliverables Completed
+
+### TypeScript Contracts
+- svelte-ui/src/lib/bridge/types.ts
+
+### C# Models
+- godot/scripts/Models/IpcMessage.cs
+- godot/scripts/Models/TreeNode.cs
+- godot/scripts/Models/PropertyValue.cs
+- godot/scripts/Models/SelectionState.cs
+- godot/scripts/Models/DiffResult.cs
+- godot/scripts/Models/AgentMessage.cs
+- godot/scripts/Models/ErrorResponse.cs
+- godot/scripts/Models/AssetInfo.cs
+- godot/scripts/Models/ViewportState.cs
+
+### Documentation
+- godot/scripts/Models/README.md
+- svelte-ui/src/lib/bridge/README.md
+- plans/templates/README-TEMPLATE.md
+
+### Tooling
+- scripts/validate-structure.sh
+
+## Contract Immutability Notice
+
+These contracts are now FROZEN. Other agents:
+1. MUST use these exact types
+2. CANNOT modify existing type shapes
+3. MAY add new types (append-only)
+4. MUST coordinate for any breaking changes
+
+## Verification
+
+Run validation: ./scripts/validate-structure.sh
