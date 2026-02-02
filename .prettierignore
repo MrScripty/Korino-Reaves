@@ -1,0 +1,43 @@
+# Build outputs
+node_modules/
+.godot/
+build/
+dist/
+*.min.js
+*.min.css
+
+# Generated files
+*.generated.*
+*.d.ts
+
+# Package lock files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# C# build artifacts
+**/bin/
+**/obj/
+
+# IDE folders
+.vs/
+.vscode/
+.idea/
+
+# Godot cache
+.import/
+export_presets.cfg
+
+# Git
+.git/
+
+# Test outputs
+TestResults/
+coverage/
+
+# UAssetAPI and UAssetGUI (external dependencies)
+UAssetAPI/
+UAssetGUI/
+
+# Plans directory (documentation)
+plans/

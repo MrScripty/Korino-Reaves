@@ -1,0 +1,41 @@
+<Project>
+  <!-- Shared build properties for all C# projects in godot/scripts/ -->
+
+  <PropertyGroup>
+    <!-- Enforce code quality at build time -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Enable nullable reference types -->
+    <Nullable>enable</Nullable>
+
+    <!-- Enable implicit usings for common namespaces -->
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- Generate documentation XML (useful for IntelliSense) -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Code analysis settings -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <!-- Relax some rules in debug builds -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- StyleCop Analyzers for consistent code style -->
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- StyleCop ruleset configuration -->
+  <PropertyGroup>
+    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)stylecop.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,103 @@
+# Lefthook configuration for UAsset Viewer
+# https://github.com/evilmartians/lefthook
+
+# Pre-commit hooks run before each commit
+pre-commit:
+  parallel: true
+  commands:
+    # C# formatting check
+    dotnet-format:
+      glob: "*.cs"
+      exclude:
+        - "UAssetAPI/**"
+        - "UAssetGUI/**"
+      run: |
+        if [ -n "{staged_files}" ]; then
+          dotnet format godot/scripts/ --include {staged_files} --verify-no-changes
+        fi
+
+    # C# build check (ensure no build errors)
+    dotnet-build:
+      glob: "*.cs"
+      exclude:
+        - "UAssetAPI/**"
+        - "UAssetGUI/**"
+      run: |
+        if ls godot/scripts/*.csproj 1>/dev/null 2>&1; then
+          dotnet build godot/scripts/ --no-restore -warnaserror
+        fi
+
+    # TypeScript/Svelte linting
+    eslint:
+      glob: "*.{ts,svelte}"
+      root: "svelte-ui/"
+      run: npx eslint {staged_files}
+
+    # Prettier formatting check
+    prettier-check:
+      glob: "*.{ts,svelte,json,css}"
+      root: "svelte-ui/"
+      exclude:
+        - "**/node_modules/**"
+        - "**/dist/**"
+        - "**/build/**"
+      run: npx prettier --check {staged_files}
+
+    # Svelte component validation
+    svelte-check:
+      glob: "*.svelte"
+      root: "svelte-ui/"
+      run: npx svelte-check --fail-on-warnings
+
+    # TypeScript type checking
+    typecheck:
+      glob: "*.ts"
+      root: "svelte-ui/"
+      run: npx tsc --noEmit
+
+    # README validation for new directories
+    readme-check:
+      run: ./scripts/validate-readmes.sh
+
+# Pre-push hooks run before pushing to remote
+pre-push:
+  parallel: false
+  commands:
+    # Run full test suite before pushing
+    tests:
+      run: |
+        echo "Running tests..."
+        # C# tests (when they exist)
+        if ls godot/scripts/*.csproj 1>/dev/null 2>&1; then
+          dotnet test godot/scripts/ --no-restore || true
+        fi
+        # Frontend tests (when they exist)
+        if [ -f "svelte-ui/package.json" ] && grep -q '"test"' svelte-ui/package.json; then
+          cd svelte-ui && npm test || true
+        fi
+        echo "Tests completed."
+
+# Commit message validation
+commit-msg:
+  commands:
+    # Validate conventional commit format
+    conventional-commit:
+      run: |
+        # Read the commit message
+        MSG=$(cat "$1")
+
+        # Check for conventional commit format
+        if ! echo "$MSG" | grep -qE "^(feat|fix|refactor|chore|docs|style|test|perf)(\([a-z-]+\))?: .+"; then
+          echo "ERROR: Commit message does not follow Conventional Commits format."
+          echo "Expected: <type>(<scope>): <description>"
+          echo "Types: feat, fix, refactor, chore, docs, style, test, perf"
+          echo "Example: feat(backend): add CEF initialization"
+          exit 1
+        fi
+
+        # Check for Agent footer in multi-agent context
+        if ! echo "$MSG" | grep -qE "Agent: [0-9]{2}-"; then
+          echo "WARNING: Commit message missing Agent footer."
+          echo "Expected: Agent: XX-agent-name"
+          echo "This is required for multi-agent orchestration tracking."
+        fi
