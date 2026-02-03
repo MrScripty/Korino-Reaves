@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using UAssetViewer.Assets;
 using UAssetViewer.Bridge.Handlers;
 using UAssetViewer.Cef;
+using UAssetViewer.Diff;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
 
@@ -84,6 +85,7 @@ public sealed class IpcDispatcher : IDisposable
         RegisterHandler(new TreeHandler(_logger, _assetManager));
         RegisterHandler(new PropertyHandler(_logger, _assetManager));
         RegisterHandler(new SelectionHandler(_logger));
+        RegisterHandler(new DiffHandler(_logger, _assetManager));
     }
 
     /// <summary>

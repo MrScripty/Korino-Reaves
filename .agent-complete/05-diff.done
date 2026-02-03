@@ -1,0 +1,70 @@
+# Diff Agent Completion Marker
+
+Agent: 05-diff
+Completed: 2026-02-02
+
+## Files Created
+
+### Backend (C#)
+- godot/scripts/Diff/DiffEngine.cs - Core diff algorithm
+- godot/scripts/Diff/ConflictDetector.cs - Three-way conflict detection
+- godot/scripts/Diff/PatchGenerator.cs - Patch generation for mod porting
+- godot/scripts/Diff/PatchApplier.cs - Apply patches to assets
+- godot/scripts/Diff/DiffHandler.cs - IPC handler
+- godot/scripts/Diff/README.md - Documentation
+
+### Frontend (Svelte)
+- svelte-ui/src/lib/components/diff/DiffView.svelte - Main diff view
+- svelte-ui/src/lib/components/diff/DiffHighlight.svelte - Change highlighting
+- svelte-ui/src/lib/components/diff/DiffTree.svelte - Tree with diff markers
+- svelte-ui/src/lib/components/diff/ConflictPanel.svelte - Conflict resolution UI
+
+### Tests
+- godot/tests/Diff/DiffEngineTests.cs - Unit tests for diff engine
+
+### Modified Files
+- godot/scripts/Bridge/IpcDispatcher.cs - Registered DiffHandler
+
+## Features Implemented
+
+1. **Two-Way Diff**
+   - Compare exports between two assets
+   - Compare properties recursively
+   - Detect added/removed/modified changes
+   - Rename detection with confidence scoring
+
+2. **Three-Way Diff (Mod Porting)**
+   - Compare original -> updated (game changes)
+   - Compare original -> modded (mod changes)
+   - Detect conflicts where both changed same property
+   - Identify safe-to-apply changes
+
+3. **Patch Generation**
+   - Generate patches from diff results
+   - Mark conflicting patches for review
+   - Support set/add/remove/rename operations
+
+4. **Patch Application**
+   - Apply safe patches automatically
+   - Resolve conflicts with user choice
+   - Support custom value resolution
+
+5. **UI Components**
+   - Side-by-side diff view
+   - Color-coded change highlighting
+   - Conflict resolution panel
+   - Filter by change type
+
+## IPC Actions
+
+| Action | Description |
+|--------|-------------|
+| compare | Two-way diff between assets |
+| threeWayCompare | Three-way diff for mod porting |
+| applySafe | Apply non-conflicting changes |
+| resolveConflict | Resolve a specific conflict |
+| clear | Clear diff state |
+| generatePatches | Generate patch set |
+| navigateTo | Navigate to change in tree |
+
+## Status: COMPLETE
