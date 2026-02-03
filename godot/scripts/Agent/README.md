@@ -1,0 +1,65 @@
+# Agent - AI Agent Framework
+
+## Purpose
+
+AI agent integration using Microsoft Semantic Kernel with local LLM support
+via Ollama. Enables automated asset operations through natural language prompts,
+including mod porting between game versions.
+
+## Contents
+
+- `AgentConfig.cs` - Configuration for LLM provider and model settings
+- `AgentManager.cs` - Semantic Kernel initialization and prompt execution
+- `AgentHandler.cs` - IPC handler for frontend communication
+- `IModelLibrary.cs` - Interface for pumas-core model management
+- `PumasModelLibrary.cs` - pumas-core UniFFI integration (stub pending full bindings)
+- `Plugins/` - Semantic Kernel plugins exposing app functionality to the AI
+- `Workflows/` - Pre-built agent workflows for common tasks
+
+### Plugins
+
+- `AssetPlugin.cs` - Asset file operations (open, save, export)
+- `NavigationPlugin.cs` - Asset tree browsing and search
+- `EditPlugin.cs` - Property reading and writing
+- `DiffPlugin.cs` - Asset comparison and conflict detection
+- `ModelPlugin.cs` - AI model library management via pumas-core
+
+### Workflows
+
+- `ModPortingWorkflow.cs` - Automated mod porting between game versions
+- `AssetExplorerWorkflow.cs` - AI-driven asset analysis and Q&A
+
+## Design Decisions
+
+- **Semantic Kernel** chosen for native C# support and excellent tool-calling API
+- **Ollama** as default LLM runtime for local, privacy-preserving inference
+- **pumas-core via UniFFI** for model management (pending full C# binding generation)
+- **DiffPlugin uses reflection** to avoid compile-time coupling with the Diff module
+- **AgentManager.Create()** factory pattern ensures all dependencies are validated upfront
+
+## Dependencies
+
+- Internal: `Services/`, `Assets/`, `Bridge/`, `Models/`, `Infrastructure/`
+- External: `Microsoft.SemanticKernel`, `Microsoft.SemanticKernel.Connectors.Ollama`
+- Native: `libpumas_uniffi.so` (pumas-core via UniFFI, when available)
+
+## Usage Examples
+
+```csharp
+// Initialize the agent
+var config = AgentConfig.Default;
+var agent = AgentManager.Create(config, assetService, treeService, propertyService, modelLibrary, logger);
+
+// Execute a prompt
+var result = await agent.ExecuteAsync("What properties does Export[0] have?");
+
+// Run a mod porting workflow
+var workflow = new ModPortingWorkflow(agent, logger);
+var result = await workflow.ExecuteAsync(originalPath, updatedPath, modPath, outputPath);
+```
+
+## Local LLM Requirements
+
+- 7B+ parameter model with tool-calling support
+- 8GB VRAM (GPU) or 16GB RAM (CPU inference)
+- Recommended: Mistral 7B Instruct, Llama 3.1 8B, Qwen 2.5 7B
