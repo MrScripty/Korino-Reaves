@@ -30,4 +30,11 @@
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="9.0.2" />
   </ItemGroup>
+
+  <!-- Asset Parsing -->
+  <ItemGroup>
+    <PackageReference Include="UAssetAPI" Version="1.3.2" />
+    <PackageReference Include="CUE4Parse" Version="25.0.3" />
+    <PackageReference Include="CUE4Parse-Conversion" Version="25.0.3" />
+  </ItemGroup>
 </Project>

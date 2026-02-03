@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using UAssetViewer.Assets;
 using UAssetViewer.Bridge.Handlers;
 using UAssetViewer.Cef;
 using UAssetViewer.Infrastructure;
@@ -21,13 +22,20 @@ public sealed class IpcDispatcher : IDisposable
 {
     private readonly Dictionary<string, IMessageHandler> _handlers = new();
     private readonly IAppLogger _logger;
+    private readonly AssetManager _assetManager;
     private CefBrowserWrapper? _browser;
     private bool _disposed;
 
-    public IpcDispatcher(IAppLogger logger)
+    public IpcDispatcher(IAppLogger logger, AssetManager assetManager)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _assetManager = assetManager ?? throw new ArgumentNullException(nameof(assetManager));
     }
+
+    /// <summary>
+    /// Gets the AssetManager instance.
+    /// </summary>
+    public AssetManager AssetManager => _assetManager;
 
     /// <summary>
     /// Connects the dispatcher to a browser for bidirectional communication.
@@ -72,9 +80,9 @@ public sealed class IpcDispatcher : IDisposable
     public void RegisterDefaultHandlers()
     {
         RegisterHandler(new TestHandler(_logger));
-        RegisterHandler(new AssetHandler(_logger));
-        RegisterHandler(new TreeHandler(_logger));
-        RegisterHandler(new PropertyHandler(_logger));
+        RegisterHandler(new AssetHandler(_logger, _assetManager));
+        RegisterHandler(new TreeHandler(_logger, _assetManager));
+        RegisterHandler(new PropertyHandler(_logger, _assetManager));
         RegisterHandler(new SelectionHandler(_logger));
     }
 

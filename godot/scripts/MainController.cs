@@ -8,6 +8,7 @@
 
 using System;
 using Godot;
+using UAssetViewer.Assets;
 using UAssetViewer.Bridge;
 using UAssetViewer.Cef;
 using UAssetViewer.Infrastructure;
@@ -27,6 +28,7 @@ public partial class MainController : Node
     public string UiPath { get; set; } = "file://{UI_PATH}/index.html";
 
     private IAppLogger _logger = null!;
+    private AssetManager? _assetManager;
     private CefBrowserWrapper? _browser;
     private IpcDispatcher? _dispatcher;
     private TextureRect? _overlay;
@@ -178,7 +180,10 @@ public partial class MainController : Node
     {
         _logger.Info("Setting up IPC dispatcher...");
 
-        _dispatcher = new IpcDispatcher(_logger);
+        // Create AssetManager for handling asset operations
+        _assetManager = new AssetManager(_logger);
+
+        _dispatcher = new IpcDispatcher(_logger, _assetManager);
         _dispatcher.RegisterDefaultHandlers();
         _dispatcher.Connect(_browser!);
     }

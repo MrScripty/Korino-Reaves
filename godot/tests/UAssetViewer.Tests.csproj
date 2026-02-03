@@ -20,6 +20,11 @@
     <PackageReference Include="System.Text.Json" Version="9.0.2" />
   </ItemGroup>
 
+  <!-- Asset parsing packages (for integration tests) -->
+  <ItemGroup>
+    <PackageReference Include="UAssetAPI" Version="1.3.2" />
+  </ItemGroup>
+
   <!-- Reference the main project source files directly (no Godot dependency) -->
   <ItemGroup>
     <Compile Include="../scripts/Models/**/*.cs" />
@@ -27,5 +32,12 @@
     <Compile Include="../scripts/Bridge/IpcDispatcher.cs" />
     <Compile Include="../scripts/Bridge/Handlers/IMessageHandler.cs" />
     <Compile Include="../scripts/Bridge/Handlers/TestHandler.cs" />
+    <Compile Include="../scripts/Services/**/*.cs" />
+    <!-- Asset layer - Godot-agnostic parts only -->
+    <Compile Include="../scripts/Assets/AssetLoader.cs" />
+    <Compile Include="../scripts/Assets/TreeBuilder.cs" />
+    <Compile Include="../scripts/Assets/PropertyService.cs" />
+    <Compile Include="../scripts/Assets/MappingsManager.cs" />
+    <Compile Include="../scripts/Assets/AssetManager.cs" />
   </ItemGroup>
 </Project>
