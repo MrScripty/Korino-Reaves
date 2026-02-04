@@ -12,6 +12,8 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Suppress Semantic Kernel experimental API warnings and brace style enforcement -->
     <NoWarn>$(NoWarn);SKEXP0070;IDE0011</NoWarn>
+    <!-- Godot.NET.Sdk doesn't copy NuGet assemblies to output by default -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <!-- Exclude test files from main build -->
