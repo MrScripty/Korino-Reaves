@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/cef-helper/">
+    <Project Path="cef-helper/CefHelper.csproj" />
+  </Folder>
+  <Folder Name="/godot/">
+    <Project Path="godot/UAssetViewer.csproj" />
+  </Folder>
+  <Folder Name="/UAssetAPI/">
+    <Project Path="UAssetAPI/UAssetAPI.Tests/UAssetAPI.Tests.csproj" />
+    <Project Path="UAssetAPI/UAssetAPI/UAssetAPI.csproj" />
+  </Folder>
+</Solution>
