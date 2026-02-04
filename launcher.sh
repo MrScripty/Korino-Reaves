@@ -6,7 +6,12 @@ SOLUTION="$SCRIPT_DIR/UAssetViewer.slnx"
 GODOT_PROJECT="$SCRIPT_DIR/godot"
 SVELTE_UI="$SCRIPT_DIR/svelte-ui"
 CEF_HELPER="$SCRIPT_DIR/cef-helper"
+CEF_DIR="$SCRIPT_DIR/cef"
 ENV_FILE="$SCRIPT_DIR/.launcher.env"
+
+CEF_VERSION="87.1.14+ga29e9a3+chromium-87.0.4280.141"
+CEF_TARBALL="cef_binary_${CEF_VERSION}_linux64_minimal.tar.bz2"
+CEF_URL="https://cef-builds.spotifycdn.com/${CEF_TARBALL}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,11 +35,11 @@ usage() {
     echo "  build            Compile the project from source"
     echo "  run              Build and launch the application in Godot"
     echo "  set-godot <path> Set the path to the Godot binary or directory"
+    echo "  setup-cef        Download and extract CEF native binaries for Linux"
     echo ""
     echo "Examples:"
     echo "  $0 set-godot /path/to/Godot_v4.6-stable_mono_linux_x86_64/"
-    echo "  $0 install"
-    echo "  $0 build"
+    echo "  $0 setup-cef"
     echo "  $0 install build run"
 }
 
@@ -174,12 +179,64 @@ cmd_build() {
     log "Build complete."
 }
 
+cmd_setup_cef() {
+    log "Setting up CEF native binaries (CEF $CEF_VERSION)..."
+
+    if [[ -f "$CEF_DIR/Release/libcef.so" ]]; then
+        log "CEF binaries already present at: $CEF_DIR/Release/"
+        return 0
+    fi
+
+    if ! command -v curl &>/dev/null; then
+        error "curl is required for downloading CEF binaries"
+        exit 1
+    fi
+
+    mkdir -p "$CEF_DIR"
+
+    local tarball="$CEF_DIR/$CEF_TARBALL"
+
+    if [[ -f "$tarball" ]]; then
+        log "Using cached download: $tarball"
+    else
+        log "Downloading CEF binaries (~260 MB)..."
+        log "URL: $CEF_URL"
+        curl -L --progress-bar -o "$tarball" "$CEF_URL"
+    fi
+
+    log "Extracting CEF binaries..."
+    tar -xjf "$tarball" -C "$CEF_DIR" --strip-components=1
+
+    if [[ -f "$CEF_DIR/Release/libcef.so" ]]; then
+        log "CEF binaries extracted to: $CEF_DIR/Release/"
+        log "You can delete the tarball to save space:"
+        log "  rm \"$tarball\""
+    else
+        error "Extraction failed - libcef.so not found in $CEF_DIR/Release/"
+        exit 1
+    fi
+}
+
 cmd_run() {
     local godot_bin
     if ! godot_bin=$(find_godot); then
         error "Godot (Mono/.NET) not found."
         error "Set it with: $0 set-godot /path/to/Godot_v4.x-stable_mono_linux_x86_64/"
         exit 1
+    fi
+
+    # Set CEF_PATH if native binaries are present
+    if [[ -d "$CEF_DIR/Release" && -f "$CEF_DIR/Release/libcef.so" ]]; then
+        export CEF_PATH="$CEF_DIR/Release"
+        log "CEF_PATH=$CEF_PATH"
+    elif [[ -z "${CEF_PATH:-}" ]]; then
+        warn "CEF binaries not found. Run '$0 setup-cef' to download them."
+        warn "The app will launch but CEF features will be unavailable."
+    fi
+
+    # Add CEF Release dir to library path so libcef.so is found
+    if [[ -n "${CEF_PATH:-}" ]]; then
+        export LD_LIBRARY_PATH="${CEF_PATH}:${LD_LIBRARY_PATH:-}"
     fi
 
     log "Launching with: $godot_bin"
@@ -205,9 +262,10 @@ while [[ $i -lt ${#args[@]} ]]; do
             fi
             cmd_set_godot "${args[$i]}"
             ;;
-        install) cmd_install ;;
-        build)   cmd_build ;;
-        run)     cmd_run ;;
+        install)   cmd_install ;;
+        build)     cmd_build ;;
+        run)       cmd_run ;;
+        setup-cef) cmd_setup_cef ;;
         -h|--help|help) usage; exit 0 ;;
         *)
             error "Unknown command: ${args[$i]}"
