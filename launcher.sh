@@ -182,39 +182,64 @@ cmd_build() {
 cmd_setup_cef() {
     log "Setting up CEF native binaries (CEF $CEF_VERSION)..."
 
-    if [[ -f "$CEF_DIR/Release/libcef.so" ]]; then
+    if [[ -f "$CEF_DIR/Release/libcef.so" && -f "$CEF_DIR/Release/icudtl.dat" ]]; then
         log "CEF binaries already present at: $CEF_DIR/Release/"
         return 0
     fi
 
-    if ! command -v curl &>/dev/null; then
-        error "curl is required for downloading CEF binaries"
-        exit 1
+    # Download and extract if libcef.so is not present
+    if [[ ! -f "$CEF_DIR/Release/libcef.so" ]]; then
+        if ! command -v curl &>/dev/null; then
+            error "curl is required for downloading CEF binaries"
+            exit 1
+        fi
+
+        mkdir -p "$CEF_DIR"
+
+        local tarball="$CEF_DIR/$CEF_TARBALL"
+
+        if [[ -f "$tarball" ]]; then
+            log "Using cached download: $tarball"
+        else
+            log "Downloading CEF binaries (~260 MB)..."
+            log "URL: $CEF_URL"
+            curl -L --progress-bar -o "$tarball" "$CEF_URL"
+        fi
+
+        log "Extracting CEF binaries..."
+        tar -xjf "$tarball" -C "$CEF_DIR" --strip-components=1
+
+        if [[ -f "$CEF_DIR/Release/libcef.so" ]]; then
+            log "CEF binaries extracted to: $CEF_DIR/Release/"
+            log "You can delete the tarball to save space:"
+            log "  rm \"$tarball\""
+        else
+            error "Extraction failed - libcef.so not found in $CEF_DIR/Release/"
+            exit 1
+        fi
     fi
 
-    mkdir -p "$CEF_DIR"
-
-    local tarball="$CEF_DIR/$CEF_TARBALL"
-
-    if [[ -f "$tarball" ]]; then
-        log "Using cached download: $tarball"
-    else
-        log "Downloading CEF binaries (~260 MB)..."
-        log "URL: $CEF_URL"
-        curl -L --progress-bar -o "$tarball" "$CEF_URL"
+    # CEF native code looks for icudtl.dat and .pak files relative to libcef.so,
+    # but the distribution puts them in Resources/. Symlink them into Release/.
+    if [[ -d "$CEF_DIR/Resources" ]]; then
+        log "Symlinking CEF resource files into Release/..."
+        for f in "$CEF_DIR/Resources"/*.dat "$CEF_DIR/Resources"/*.pak "$CEF_DIR/Resources"/*.bin; do
+            [[ -f "$f" ]] || continue
+            local name
+            name="$(basename "$f")"
+            if [[ ! -e "$CEF_DIR/Release/$name" ]]; then
+                ln -sf "$f" "$CEF_DIR/Release/$name"
+                log "  Linked: $name"
+            fi
+        done
+        # Symlink locales directory
+        if [[ -d "$CEF_DIR/Resources/locales" && ! -e "$CEF_DIR/Release/locales" ]]; then
+            ln -sf "$CEF_DIR/Resources/locales" "$CEF_DIR/Release/locales"
+            log "  Linked: locales/"
+        fi
     fi
 
-    log "Extracting CEF binaries..."
-    tar -xjf "$tarball" -C "$CEF_DIR" --strip-components=1
-
-    if [[ -f "$CEF_DIR/Release/libcef.so" ]]; then
-        log "CEF binaries extracted to: $CEF_DIR/Release/"
-        log "You can delete the tarball to save space:"
-        log "  rm \"$tarball\""
-    else
-        error "Extraction failed - libcef.so not found in $CEF_DIR/Release/"
-        exit 1
-    fi
+    log "CEF setup complete."
 }
 
 cmd_run() {
