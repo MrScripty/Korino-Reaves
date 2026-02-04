@@ -128,6 +128,19 @@ public sealed class CefManager : IDisposable
                 LogSeverity = CefLogSeverity.Warning,
             };
 
+            // Set resource paths (icudtl.dat, .pak files, locales)
+            var resourcesDir = ResolveCefResourcesDir(cefPath);
+            if (resourcesDir != null)
+            {
+                settings.ResourcesDirPath = resourcesDir;
+                var localesDir = Path.Combine(resourcesDir, "locales");
+                if (Directory.Exists(localesDir))
+                {
+                    settings.LocalesDirPath = localesDir;
+                }
+                _logger.Info("CEF resources: {ResourcesDir}", resourcesDir);
+            }
+
             // Create args from command line
             var args = Environment.GetCommandLineArgs();
             var mainArgs = new CefMainArgs(args);
@@ -191,6 +204,38 @@ public sealed class CefManager : IDisposable
         {
             _logger.Error(ex, "Error during CEF shutdown");
         }
+    }
+
+    /// <summary>
+    /// Resolves the CEF Resources directory containing icudtl.dat, .pak files, and locales.
+    /// CEF distributions put these in a sibling "Resources" directory next to "Release".
+    /// </summary>
+    private string? ResolveCefResourcesDir(string? cefReleasePath)
+    {
+        if (cefReleasePath == null)
+        {
+            return null;
+        }
+
+        // Standard CEF layout: Release/ and Resources/ are siblings
+        var parentDir = Path.GetDirectoryName(cefReleasePath);
+        if (parentDir != null)
+        {
+            var resourcesDir = Path.Combine(parentDir, "Resources");
+            if (Directory.Exists(resourcesDir) && File.Exists(Path.Combine(resourcesDir, "icudtl.dat")))
+            {
+                return resourcesDir;
+            }
+        }
+
+        // Check if icudtl.dat is directly in the release path
+        if (File.Exists(Path.Combine(cefReleasePath, "icudtl.dat")))
+        {
+            return cefReleasePath;
+        }
+
+        _logger.Warning("CEF resources directory (icudtl.dat) not found near: {Path}", cefReleasePath);
+        return null;
     }
 
     /// <summary>
