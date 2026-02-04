@@ -8,6 +8,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using UAssetViewer.Infrastructure;
 using Xilium.CefGlue;
 
@@ -75,15 +76,39 @@ public sealed class CefManager : IDisposable
 
         try
         {
-            // Load CEF runtime from CEF_PATH env var or default search
+            // Load CEF runtime - platform-specific strategies
             var cefPath = ResolveCefPath();
-            if (cefPath != null)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                _logger.Info("Loading CEF from: {CefPath}", cefPath);
-                CefRuntime.Load(cefPath);
+                // Windows: CefRuntime.Load(path) calls SetDllDirectory
+                if (cefPath != null)
+                {
+                    _logger.Info("[Windows] Loading CEF from: {CefPath}", cefPath);
+                    CefRuntime.Load(cefPath);
+                }
+                else
+                {
+                    _logger.Info("[Windows] Loading CEF from system PATH");
+                    CefRuntime.Load();
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                // Linux: CefRuntime.Load(path) is not supported.
+                // Native resolution uses LD_LIBRARY_PATH, set by launcher.sh.
+                if (cefPath != null)
+                {
+                    _logger.Info("[Linux] CEF path resolved: {CefPath} (loaded via LD_LIBRARY_PATH)", cefPath);
+                }
+                else
+                {
+                    _logger.Info("[Linux] Loading CEF from LD_LIBRARY_PATH");
+                }
+                CefRuntime.Load();
             }
             else
             {
+                _logger.Warning("Unsupported platform for CEF, attempting default load");
                 CefRuntime.Load();
             }
             _logger.Debug("CEF runtime loaded");
@@ -171,31 +196,35 @@ public sealed class CefManager : IDisposable
     /// <summary>
     /// Resolves the CEF native binaries directory.
     /// Checks CEF_PATH env var, then looks in standard locations.
+    /// Returns the directory containing libcef (libcef.so on Linux, libcef.dll on Windows).
     /// </summary>
     private string? ResolveCefPath()
     {
+        var libName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "libcef.dll" : "libcef.so";
+
         // Check environment variable
         var envPath = Environment.GetEnvironmentVariable("CEF_PATH");
         if (!string.IsNullOrEmpty(envPath))
         {
-            if (Directory.Exists(envPath) && File.Exists(Path.Combine(envPath, "libcef.so")))
+            if (Directory.Exists(envPath) && File.Exists(Path.Combine(envPath, libName)))
             {
                 return envPath;
             }
             // Check for Release subdirectory (standard CEF distribution layout)
             var releasePath = Path.Combine(envPath, "Release");
-            if (Directory.Exists(releasePath) && File.Exists(Path.Combine(releasePath, "libcef.so")))
+            if (Directory.Exists(releasePath) && File.Exists(Path.Combine(releasePath, libName)))
             {
                 return releasePath;
             }
-            _logger.Warning("CEF_PATH set but libcef.so not found at: {Path}", envPath);
+            _logger.Warning("CEF_PATH set but {LibName} not found at: {Path}", libName, envPath);
         }
 
-        // Check common locations relative to project
+        // Check common locations relative to executable
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         var searchPaths = new[]
         {
             Path.Combine(baseDir, "cef"),
+            Path.Combine(baseDir, "cef", "Release"),
             Path.Combine(baseDir, "..", "..", "cef", "Release"),
             Path.Combine(baseDir, "..", "..", "cef"),
         };
@@ -203,7 +232,7 @@ public sealed class CefManager : IDisposable
         foreach (var path in searchPaths)
         {
             var fullPath = Path.GetFullPath(path);
-            if (Directory.Exists(fullPath) && File.Exists(Path.Combine(fullPath, "libcef.so")))
+            if (Directory.Exists(fullPath) && File.Exists(Path.Combine(fullPath, libName)))
             {
                 return fullPath;
             }
