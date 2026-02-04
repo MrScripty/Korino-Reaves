@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
     import { ipc } from '$lib/bridge/ipc';
-    import * as asset from '$lib/view-models/asset.svelte';
+    import { asset } from '$lib/view-models/asset.svelte';
 
     interface MenuItem {
         label: string;

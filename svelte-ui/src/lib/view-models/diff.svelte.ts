@@ -15,254 +15,192 @@ import type {
     DiffConflict,
 } from '$lib/bridge/types';
 
-// =============================================================================
-// State (Received from C#)
-// =============================================================================
+class DiffVM {
+    diffResult = $state<DiffResult | null>(null);
+    threeWayResult = $state<ThreeWayDiffResult | null>(null);
+    isLoading = $state(false);
+    error = $state<string | null>(null);
+    selectedChange = $state<DiffChange | null>(null);
+    changeTypeFilter = $state<Set<string>>(new Set(['added', 'removed', 'modified', 'renamed']));
+    showOnlyConflicts = $state(false);
 
-/** Two-way diff result (comparing two assets) */
-export let diffResult = $state<DiffResult | null>(null);
-
-/** Three-way diff result (for mod porting) */
-export let threeWayResult = $state<ThreeWayDiffResult | null>(null);
-
-/** Whether a diff operation is in progress */
-export let isLoading = $state(false);
-
-/** Error message from last diff operation */
-export let error = $state<string | null>(null);
-
-// =============================================================================
-// Transient UI State (Svelte can own this)
-// =============================================================================
-
-/** Currently selected change for detail view */
-export let selectedChange = $state<DiffChange | null>(null);
-
-/** Filter for change types to show */
-export let changeTypeFilter = $state<Set<string>>(new Set(['added', 'removed', 'modified', 'renamed']));
-
-/** Whether to show only conflicts (for three-way diff) */
-export let showOnlyConflicts = $state(false);
-
-// =============================================================================
-// Derived State
-// =============================================================================
-
-/** Whether a diff is loaded */
-export let hasDiff = $derived(diffResult !== null || threeWayResult !== null);
-
-/** Whether this is a three-way diff */
-export let isThreeWayDiff = $derived(threeWayResult !== null);
-
-/** All changes from the current diff */
-export let allChanges = $derived.by(() => {
-    if (threeWayResult) {
-        return [...threeWayResult.gameChanges, ...threeWayResult.modChanges];
+    get hasDiff(): boolean {
+        return this.diffResult !== null || this.threeWayResult !== null;
     }
-    return diffResult?.changes ?? [];
-});
 
-/** Filtered changes based on current filter settings */
-export let filteredChanges = $derived.by(() => {
-    return allChanges.filter((c) => changeTypeFilter.has(c.changeType));
-});
-
-/** Conflicts from three-way diff */
-export let conflicts = $derived(threeWayResult?.conflicts ?? []);
-
-/** Safe to apply changes from three-way diff */
-export let safeChanges = $derived(threeWayResult?.safeToApply ?? []);
-
-/** Summary statistics */
-export let summary = $derived.by(() => {
-    if (threeWayResult) {
-        const gameSum = summarizeChanges(threeWayResult.gameChanges);
-        const modSum = summarizeChanges(threeWayResult.modChanges);
-        return {
-            game: gameSum,
-            mod: modSum,
-            conflicts: threeWayResult.conflicts.length,
-            safeToApply: threeWayResult.safeToApply.length,
-        };
+    get isThreeWayDiff(): boolean {
+        return this.threeWayResult !== null;
     }
-    if (diffResult) {
-        return {
-            ...diffResult.summary,
-            total: diffResult.changes.length,
-        };
+
+    get allChanges(): DiffChange[] {
+        if (this.threeWayResult) {
+            return [...this.threeWayResult.gameChanges, ...this.threeWayResult.modChanges];
+        }
+        return this.diffResult?.changes ?? [];
     }
-    return null;
-});
+
+    get filteredChanges(): DiffChange[] {
+        return this.allChanges.filter((c) => this.changeTypeFilter.has(c.changeType));
+    }
+
+    get conflicts(): DiffConflict[] {
+        return this.threeWayResult?.conflicts ?? [];
+    }
+
+    get safeChanges(): DiffChange[] {
+        return this.threeWayResult?.safeToApply ?? [];
+    }
+
+    get summary() {
+        if (this.threeWayResult) {
+            const gameSum = summarizeChanges(this.threeWayResult.gameChanges);
+            const modSum = summarizeChanges(this.threeWayResult.modChanges);
+            return {
+                game: gameSum,
+                mod: modSum,
+                conflicts: this.threeWayResult.conflicts.length,
+                safeToApply: this.threeWayResult.safeToApply.length,
+            };
+        }
+        if (this.diffResult) {
+            return {
+                ...this.diffResult.summary,
+                total: this.diffResult.changes.length,
+            };
+        }
+        return null;
+    }
+
+    compareAssets(basePath: string, targetPath: string): void {
+        this.isLoading = true;
+        this.error = null;
+        ipc.send({
+            type: 'diff',
+            action: 'compare',
+            payload: { basePath, targetPath },
+        });
+    }
+
+    compareForModPort(
+        originalPath: string,
+        updatedPath: string,
+        moddedPath: string
+    ): void {
+        this.isLoading = true;
+        this.error = null;
+        ipc.send({
+            type: 'diff',
+            action: 'threeWayCompare',
+            payload: { originalPath, updatedPath, moddedPath },
+        });
+    }
+
+    applySafeChanges(): void {
+        if (!this.threeWayResult) return;
+        ipc.send({
+            type: 'diff',
+            action: 'applySafe',
+            payload: {},
+        });
+    }
+
+    resolveConflict(
+        path: string[],
+        resolution: 'keep_game' | 'keep_mod' | 'custom',
+        customValue?: unknown
+    ): void {
+        ipc.send({
+            type: 'diff',
+            action: 'resolveConflict',
+            payload: { path, resolution, customValue },
+        });
+    }
+
+    clearDiff(): void {
+        ipc.send({
+            type: 'diff',
+            action: 'clear',
+            payload: {},
+        });
+    }
+
+    navigateToChange(change: DiffChange): void {
+        ipc.send({
+            type: 'diff',
+            action: 'navigateTo',
+            payload: { path: change.path },
+        });
+    }
+
+    selectChange(change: DiffChange | null): void {
+        this.selectedChange = change;
+    }
+
+    toggleChangeTypeFilter(type: string): void {
+        if (this.changeTypeFilter.has(type)) {
+            this.changeTypeFilter.delete(type);
+            this.changeTypeFilter = new Set(this.changeTypeFilter);
+        } else {
+            this.changeTypeFilter.add(type);
+            this.changeTypeFilter = new Set(this.changeTypeFilter);
+        }
+    }
+
+    setShowOnlyConflicts(value: boolean): void {
+        this.showOnlyConflicts = value;
+    }
+
+    clearError(): void {
+        this.error = null;
+    }
+
+    formatPath(path: string[]): string {
+        return path.join(' / ');
+    }
+}
+
+export const diff = new DiffVM();
 
 // =============================================================================
 // IPC Listeners
 // =============================================================================
 
-// Two-way diff result
 ipc.onAction<DiffResult>('diff', 'result', (payload) => {
-    diffResult = payload;
-    threeWayResult = null;
-    isLoading = false;
-    error = null;
-    selectedChange = null;
+    diff.diffResult = payload;
+    diff.threeWayResult = null;
+    diff.isLoading = false;
+    diff.error = null;
+    diff.selectedChange = null;
 });
 
-// Three-way diff result
 ipc.onAction<ThreeWayDiffResult>('diff', 'threeWayResult', (payload) => {
-    threeWayResult = payload;
-    diffResult = null;
-    isLoading = false;
-    error = null;
-    selectedChange = null;
+    diff.threeWayResult = payload;
+    diff.diffResult = null;
+    diff.isLoading = false;
+    diff.error = null;
+    diff.selectedChange = null;
 });
 
-// Clear diff
 ipc.onAction('diff', 'clear', () => {
-    diffResult = null;
-    threeWayResult = null;
-    selectedChange = null;
-    error = null;
+    diff.diffResult = null;
+    diff.threeWayResult = null;
+    diff.selectedChange = null;
+    diff.error = null;
 });
 
-// Loading state
 ipc.onAction<{ loading: boolean }>('diff', 'loading', (payload) => {
-    isLoading = payload.loading;
+    diff.isLoading = payload.loading;
 });
 
-// Error state
 ipc.onAction<{ message: string }>('diff', 'error', (payload) => {
-    error = payload.message;
-    isLoading = false;
+    diff.error = payload.message;
+    diff.isLoading = false;
 });
 
 // =============================================================================
-// Actions (Forward to C#)
+// Utilities (standalone exports for backward compat)
 // =============================================================================
 
-/**
- * Request to compare two assets.
- */
-export function compareAssets(basePath: string, targetPath: string): void {
-    isLoading = true;
-    error = null;
-    ipc.send({
-        type: 'diff',
-        action: 'compare',
-        payload: { basePath, targetPath },
-    });
-}
-
-/**
- * Request to perform a three-way diff for mod porting.
- */
-export function compareForModPort(
-    originalPath: string,
-    updatedPath: string,
-    moddedPath: string
-): void {
-    isLoading = true;
-    error = null;
-    ipc.send({
-        type: 'diff',
-        action: 'threeWayCompare',
-        payload: { originalPath, updatedPath, moddedPath },
-    });
-}
-
-/**
- * Request to apply safe changes (for mod porting).
- */
-export function applySafeChanges(): void {
-    if (!threeWayResult) return;
-    ipc.send({
-        type: 'diff',
-        action: 'applySafe',
-        payload: {},
-    });
-}
-
-/**
- * Request to resolve a conflict.
- */
-export function resolveConflict(
-    path: string[],
-    resolution: 'keep_game' | 'keep_mod' | 'custom',
-    customValue?: unknown
-): void {
-    ipc.send({
-        type: 'diff',
-        action: 'resolveConflict',
-        payload: { path, resolution, customValue },
-    });
-}
-
-/**
- * Request to clear the current diff.
- */
-export function clearDiff(): void {
-    ipc.send({
-        type: 'diff',
-        action: 'clear',
-        payload: {},
-    });
-}
-
-/**
- * Request to navigate to a change in the tree view.
- */
-export function navigateToChange(change: DiffChange): void {
-    ipc.send({
-        type: 'diff',
-        action: 'navigateTo',
-        payload: { path: change.path },
-    });
-}
-
-// =============================================================================
-// Transient UI Actions (Svelte can manage these)
-// =============================================================================
-
-/**
- * Select a change for detail view (transient UI state).
- */
-export function selectChange(change: DiffChange | null): void {
-    selectedChange = change;
-}
-
-/**
- * Toggle a change type filter (transient UI state).
- */
-export function toggleChangeTypeFilter(type: string): void {
-    if (changeTypeFilter.has(type)) {
-        changeTypeFilter.delete(type);
-        changeTypeFilter = new Set(changeTypeFilter);
-    } else {
-        changeTypeFilter.add(type);
-        changeTypeFilter = new Set(changeTypeFilter);
-    }
-}
-
-/**
- * Set show only conflicts filter (transient UI state).
- */
-export function setShowOnlyConflicts(value: boolean): void {
-    showOnlyConflicts = value;
-}
-
-/**
- * Clear error state.
- */
-export function clearError(): void {
-    error = null;
-}
-
-// =============================================================================
-// Utilities
-// =============================================================================
-
-/**
- * Summarize changes by type.
- */
 function summarizeChanges(changes: DiffChange[]): {
     added: number;
     removed: number;
@@ -277,9 +215,6 @@ function summarizeChanges(changes: DiffChange[]): {
     };
 }
 
-/**
- * Get color CSS variable for a change type.
- */
 export function getChangeColor(type: string): string {
     switch (type) {
         case 'added':
@@ -296,9 +231,6 @@ export function getChangeColor(type: string): string {
     }
 }
 
-/**
- * Get background color CSS variable for a change type.
- */
 export function getChangeBgColor(type: string): string {
     switch (type) {
         case 'added':
@@ -315,9 +247,14 @@ export function getChangeBgColor(type: string): string {
     }
 }
 
-/**
- * Format a path for display.
- */
 export function formatPath(path: string[]): string {
     return path.join(' / ');
+}
+
+export function resolveConflict(
+    path: string[],
+    resolution: 'keep_game' | 'keep_mod' | 'custom',
+    customValue?: unknown
+): void {
+    diff.resolveConflict(path, resolution, customValue);
 }

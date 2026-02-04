@@ -4,7 +4,7 @@
     Toolbar for the asset tree with search and expand/collapse controls.
 -->
 <script lang="ts">
-    import * as tree from '$lib/view-models/tree.svelte';
+    import { tree } from '$lib/view-models/tree.svelte';
 
     // Transient UI state - OK for Svelte to own
     let searchInput = $state('');

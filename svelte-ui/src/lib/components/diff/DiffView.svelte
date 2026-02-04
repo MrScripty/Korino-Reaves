@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
     import type { DiffChange, DiffChangeType } from '$lib/bridge/types';
-    import * as diff from '$lib/view-models/diff.svelte';
+    import { diff } from '$lib/view-models/diff.svelte';
     import DiffTree from './DiffTree.svelte';
     import DiffHighlight from './DiffHighlight.svelte';
     import ConflictPanel from './ConflictPanel.svelte';

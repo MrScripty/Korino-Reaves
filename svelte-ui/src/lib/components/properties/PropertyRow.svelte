@@ -7,7 +7,7 @@
 <script lang="ts">
     import type { PropertyValue } from '$lib/bridge/types';
     import { PROPERTY_TYPE_COLORS } from '$lib/constants';
-    import * as properties from '$lib/view-models/properties.svelte';
+    import { properties } from '$lib/view-models/properties.svelte';
     import StringEditor from './editors/StringEditor.svelte';
     import NumberEditor from './editors/NumberEditor.svelte';
     import BoolEditor from './editors/BoolEditor.svelte';

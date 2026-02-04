@@ -7,7 +7,7 @@
 <script lang="ts">
     import type { TreeNode as TreeNodeType, TreeNodeType as NodeType } from '$lib/bridge/types';
     import { TREE, TREE_NODE_TYPE_COLORS } from '$lib/constants';
-    import * as tree from '$lib/view-models/tree.svelte';
+    import { tree } from '$lib/view-models/tree.svelte';
 
     interface Props {
         /** Node data */

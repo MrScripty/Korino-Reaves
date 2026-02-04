@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
     import PropertyRow from './PropertyRow.svelte';
-    import * as properties from '$lib/view-models/properties.svelte';
+    import { properties } from '$lib/view-models/properties.svelte';
 
     interface Props {
         /** Optional CSS class */

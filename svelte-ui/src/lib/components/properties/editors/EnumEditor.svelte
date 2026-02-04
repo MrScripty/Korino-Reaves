@@ -20,7 +20,7 @@
 
 <select class="enum-editor" {value} onchange={handleChange}>
     {#each options as option}
-        <option {value}={option}>{option}</option>
+        <option value={option}>{option}</option>
     {/each}
 </select>
 

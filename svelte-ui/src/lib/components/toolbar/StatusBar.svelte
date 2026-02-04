@@ -4,8 +4,8 @@
     Application status bar showing asset info, loading state, and messages.
 -->
 <script lang="ts">
-    import * as asset from '$lib/view-models/asset.svelte';
-    import * as tree from '$lib/view-models/tree.svelte';
+    import { asset } from '$lib/view-models/asset.svelte';
+    import { tree } from '$lib/view-models/tree.svelte';
 
     // Current status message (transient UI state)
     let statusMessage = $state<string | null>(null);

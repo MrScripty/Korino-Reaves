@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
     import TreeNode from './TreeNode.svelte';
-    import * as tree from '$lib/view-models/tree.svelte';
+    import { tree } from '$lib/view-models/tree.svelte';
     import { TREE } from '$lib/constants';
 
     interface Props {
