@@ -148,7 +148,7 @@ public sealed class MappingsManager
         return new MappingsInfo(
             Path: path,
             SchemaCount: mappings.Schemas.Count,
-            EnumCount: mappings.Enums.Count
+            EnumCount: mappings.EnumMap.Count
         );
     }
 

@@ -351,7 +351,7 @@ public sealed class TreeBuilder
 
     private TreeNode CreatePropertyNode(string parentId, int index, PropertyData property)
     {
-        var propertyType = property.PropertyType.Value.Value;
+        var propertyType = property.PropertyType.Value;
         var name = property.Name.Value.Value;
         var nodeId = $"{parentId}/property-{index}-{name}";
 
@@ -415,7 +415,7 @@ public sealed class TreeBuilder
         {
             var element = arrayProp.Value[i];
             var nodeId = $"{parentId}/element-{i}";
-            var elementType = element.PropertyType.Value.Value;
+            var elementType = element.PropertyType.Value;
 
             _nodePointers[nodeId] = element;
 

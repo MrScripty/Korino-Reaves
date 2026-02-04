@@ -62,7 +62,7 @@ public sealed class MeshExtractor
 
         try
         {
-            var mesh = await Task.Run(() => provider.LoadObject<UStaticMesh>(assetPath));
+            var mesh = await Task.Run(() => provider.LoadPackageObject<UStaticMesh>(assetPath));
 
             if (mesh == null)
             {
@@ -140,7 +140,7 @@ public sealed class MeshExtractor
 
         try
         {
-            var mesh = await Task.Run(() => provider.LoadObject<USkeletalMesh>(assetPath));
+            var mesh = await Task.Run(() => provider.LoadPackageObject<USkeletalMesh>(assetPath));
 
             if (mesh == null)
             {
@@ -219,13 +219,14 @@ public sealed class MeshExtractor
         }
 
         var lod = converted.LODs[0];
-        var section = lod.Sections.FirstOrDefault();
+        var sections = lod.Sections?.Value;
+        var section = sections?.FirstOrDefault();
 
         return new MeshInfo(
             VertexCount: lod.NumVerts,
             TriangleCount: section?.NumFaces ?? 0,
             LodCount: converted.LODs.Count,
-            MaterialCount: lod.Sections.Count,
+            MaterialCount: sections?.Length ?? 0,
             HasNormals: true,
             HasUvs: lod.NumTexCoords > 0,
             HasColors: lod.VertexColors != null
@@ -237,19 +238,23 @@ public sealed class MeshExtractor
         var arrayMesh = new ArrayMesh();
 
         // Process each section (material slot)
-        foreach (var section in lod.Sections)
+        var sections = lod.Sections?.Value;
+        if (sections != null)
         {
-            var arrays = BuildSurfaceArrays(
-                lod.Verts,
-                lod.Indices.Value,
-                section,
-                lod.NumTexCoords,
-                lod.VertexColors
-            );
-
-            if (arrays != null)
+            foreach (var section in sections)
             {
-                arrayMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+                var arrays = BuildSurfaceArrays(
+                    lod.Verts,
+                    lod.Indices!.Value,
+                    section,
+                    lod.NumTexCoords,
+                    lod.VertexColors
+                );
+
+                if (arrays != null)
+                {
+                    arrayMesh.AddSurfaceFromArrays(Godot.Mesh.PrimitiveType.Triangles, arrays);
+                }
             }
         }
 
@@ -262,18 +267,22 @@ public sealed class MeshExtractor
         var arrayMesh = new ArrayMesh();
 
         // Process each section
-        foreach (var section in lod.Sections)
+        var sections = lod.Sections?.Value;
+        if (sections != null)
         {
-            var arrays = BuildSurfaceArraysFromSkeletal(
-                lod.Verts,
-                lod.Indices.Value,
-                section,
-                lod.NumTexCoords
-            );
-
-            if (arrays != null)
+            foreach (var section in sections)
             {
-                arrayMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+                var arrays = BuildSurfaceArraysFromSkeletal(
+                    lod.Verts,
+                    lod.Indices!.Value,
+                    section,
+                    lod.NumTexCoords
+                );
+
+                if (arrays != null)
+                {
+                    arrayMesh.AddSurfaceFromArrays(Godot.Mesh.PrimitiveType.Triangles, arrays);
+                }
             }
         }
 
@@ -282,12 +291,17 @@ public sealed class MeshExtractor
     }
 
     private Godot.Collections.Array? BuildSurfaceArrays(
-        CStaticMeshVertex[] vertices,
+        CMeshVertex[]? vertices,
         FRawStaticIndexBuffer indices,
         CMeshSection section,
         int numTexCoords,
-        CVertexColor[]? vertexColors)
+        CUE4Parse.UE4.Objects.Core.Math.FColor[]? vertexColors)
     {
+        if (vertices == null)
+        {
+            return null;
+        }
+
         var firstIndex = section.FirstIndex;
         var numFaces = section.NumFaces;
 
@@ -299,11 +313,11 @@ public sealed class MeshExtractor
         // Collect unique vertex indices for this section
         var indexList = new List<int>();
         var vertexMap = new Dictionary<int, int>();
-        var mappedVertices = new List<CStaticMeshVertex>();
+        var mappedVertices = new List<CMeshVertex>();
 
         for (int i = 0; i < numFaces * 3; i++)
         {
-            var originalIndex = indices.Accessor[firstIndex + i];
+            var originalIndex = indices[firstIndex + i];
 
             if (!vertexMap.TryGetValue(originalIndex, out var mappedIndex))
             {
@@ -340,9 +354,9 @@ public sealed class MeshExtractor
             );
 
             // UV
-            if (uvArray != null && vert.UV.Length > 0)
+            if (uvArray != null && numTexCoords > 0)
             {
-                uvArray[i] = new Vector2(vert.UV[0].U, vert.UV[0].V);
+                uvArray[i] = new Vector2(vert.UV.U, vert.UV.V);
             }
 
             // Vertex color
@@ -362,32 +376,37 @@ public sealed class MeshExtractor
 
         // Create Godot surface array
         var arrays = new Godot.Collections.Array();
-        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays.Resize((int)Godot.Mesh.ArrayType.Max);
 
-        arrays[(int)Mesh.ArrayType.Vertex] = positionArray;
-        arrays[(int)Mesh.ArrayType.Normal] = normalArray;
+        arrays[(int)Godot.Mesh.ArrayType.Vertex] = positionArray;
+        arrays[(int)Godot.Mesh.ArrayType.Normal] = normalArray;
 
         if (uvArray != null)
         {
-            arrays[(int)Mesh.ArrayType.TexUV] = uvArray;
+            arrays[(int)Godot.Mesh.ArrayType.TexUV] = uvArray;
         }
 
         if (colorArray != null)
         {
-            arrays[(int)Mesh.ArrayType.Color] = colorArray;
+            arrays[(int)Godot.Mesh.ArrayType.Color] = colorArray;
         }
 
-        arrays[(int)Mesh.ArrayType.Index] = indexArray;
+        arrays[(int)Godot.Mesh.ArrayType.Index] = indexArray;
 
         return arrays;
     }
 
     private Godot.Collections.Array? BuildSurfaceArraysFromSkeletal(
-        CSkelMeshVertex[] vertices,
+        CSkelMeshVertex[]? vertices,
         FRawStaticIndexBuffer indices,
         CMeshSection section,
         int numTexCoords)
     {
+        if (vertices == null)
+        {
+            return null;
+        }
+
         var firstIndex = section.FirstIndex;
         var numFaces = section.NumFaces;
 
@@ -403,7 +422,7 @@ public sealed class MeshExtractor
 
         for (int i = 0; i < numFaces * 3; i++)
         {
-            var originalIndex = indices.Accessor[firstIndex + i];
+            var originalIndex = indices[firstIndex + i];
 
             if (!vertexMap.TryGetValue(originalIndex, out var mappedIndex))
             {
@@ -436,24 +455,24 @@ public sealed class MeshExtractor
                 -vert.Normal.Y
             );
 
-            if (uvArray != null && vert.UV.Length > 0)
+            if (uvArray != null && numTexCoords > 0)
             {
-                uvArray[i] = new Vector2(vert.UV[0].U, vert.UV[0].V);
+                uvArray[i] = new Vector2(vert.UV.U, vert.UV.V);
             }
         }
 
         var arrays = new Godot.Collections.Array();
-        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays.Resize((int)Godot.Mesh.ArrayType.Max);
 
-        arrays[(int)Mesh.ArrayType.Vertex] = positionArray;
-        arrays[(int)Mesh.ArrayType.Normal] = normalArray;
+        arrays[(int)Godot.Mesh.ArrayType.Vertex] = positionArray;
+        arrays[(int)Godot.Mesh.ArrayType.Normal] = normalArray;
 
         if (uvArray != null)
         {
-            arrays[(int)Mesh.ArrayType.TexUV] = uvArray;
+            arrays[(int)Godot.Mesh.ArrayType.TexUV] = uvArray;
         }
 
-        arrays[(int)Mesh.ArrayType.Index] = indexList.ToArray();
+        arrays[(int)Godot.Mesh.ArrayType.Index] = indexList.ToArray();
 
         return arrays;
     }

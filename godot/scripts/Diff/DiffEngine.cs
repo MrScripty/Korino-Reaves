@@ -323,7 +323,7 @@ public sealed class DiffEngine : IDiffEngine
         }
 
         // Type mismatch
-        if (baseProp.PropertyType.Value.Value != targetProp.PropertyType.Value.Value)
+        if (baseProp.PropertyType.Value != targetProp.PropertyType.Value)
         {
             changes.Add(new DiffChange(
                 Path: path,

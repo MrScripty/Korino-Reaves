@@ -56,7 +56,7 @@ public sealed class TextureExtractor
         try
         {
             // Load the texture asset
-            var gameFile = await Task.Run(() => provider.LoadObject<UTexture2D>(assetPath));
+            var gameFile = await Task.Run(() => provider.LoadPackageObject<UTexture2D>(assetPath));
 
             if (gameFile == null)
             {
@@ -124,11 +124,13 @@ public sealed class TextureExtractor
         var hasAlpha = format.Contains("A8") || format.Contains("BC3")
             || format.Contains("BC7") || format.Contains("DXT5");
 
+        var platformData = texture.PlatformData;
+
         return new TextureInfo(
-            Width: texture.SizeX,
-            Height: texture.SizeY,
+            Width: platformData.SizeX,
+            Height: platformData.SizeY,
             Format: format,
-            MipCount: texture.Mips?.Length ?? 0,
+            MipCount: platformData.Mips?.Length ?? 0,
             HasAlpha: hasAlpha
         );
     }
@@ -159,7 +161,7 @@ public sealed class TextureExtractor
         var image = Image.CreateFromData(
             width,
             height,
-            mipMaps: false,
+            false,
             Image.Format.Rgba8,
             rgbaData
         );

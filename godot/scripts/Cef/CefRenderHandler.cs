@@ -13,24 +13,29 @@ namespace UAssetViewer.Cef;
 /// CEF render handler for offscreen rendering.
 /// Captures paint events and stores BGRA buffer in SharedState.
 /// </summary>
-public sealed class CefRenderHandler : CefRenderHandler
+public sealed class OsrRenderHandler : Xilium.CefGlue.CefRenderHandler
 {
     private readonly SharedState _shared;
     private readonly IAppLogger _logger;
 
-    public CefRenderHandler(SharedState shared, IAppLogger logger)
+    public OsrRenderHandler(SharedState shared, IAppLogger logger)
     {
         _shared = shared ?? throw new ArgumentNullException(nameof(shared));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    protected override CefAccessibilityHandler GetAccessibilityHandler()
+    {
+        return null!;
+    }
+
     /// <summary>
     /// Returns the view rectangle for CEF rendering.
     /// </summary>
-    protected override CefRect GetViewRect(CefBrowser browser)
+    protected override void GetViewRect(CefBrowser browser, out CefRectangle rect)
     {
         var size = _shared.ViewportSize;
-        return new CefRect(0, 0, size.Width, size.Height);
+        rect = new CefRectangle(0, 0, size.Width, size.Height);
     }
 
     /// <summary>
@@ -40,7 +45,7 @@ public sealed class CefRenderHandler : CefRenderHandler
     protected override void OnPaint(
         CefBrowser browser,
         CefPaintElementType type,
-        CefRect[] dirtyRects,
+        CefRectangle[] dirtyRects,
         IntPtr buffer,
         int width,
         int height)
@@ -81,8 +86,8 @@ public sealed class CefRenderHandler : CefRenderHandler
     {
         var size = _shared.ViewportSize;
         screenInfo.DeviceScaleFactor = 1.0f;
-        screenInfo.Rect = new CefRect(0, 0, size.Width, size.Height);
-        screenInfo.AvailableRect = screenInfo.Rect;
+        screenInfo.Rectangle = new CefRectangle(0, 0, size.Width, size.Height);
+        screenInfo.AvailableRectangle = screenInfo.Rectangle;
         return true;
     }
 
@@ -96,51 +101,27 @@ public sealed class CefRenderHandler : CefRenderHandler
         return true;
     }
 
-    /// <summary>
-    /// Called when the popup should be shown/hidden.
-    /// </summary>
     protected override void OnPopupShow(CefBrowser browser, bool show)
     {
-        // We don't handle popups in this implementation
     }
 
-    /// <summary>
-    /// Called when the popup size changes.
-    /// </summary>
-    protected override void OnPopupSize(CefBrowser browser, CefRect rect)
+    protected override void OnPopupSize(CefBrowser browser, CefRectangle rect)
     {
-        // We don't handle popups in this implementation
     }
 
-    /// <summary>
-    /// Called when the scroll offset changes.
-    /// </summary>
     protected override void OnScrollOffsetChanged(CefBrowser browser, double x, double y)
     {
-        // No action needed for offscreen rendering
     }
 
-    /// <summary>
-    /// Called when the IME composition range changes.
-    /// </summary>
-    protected override void OnImeCompositionRangeChanged(CefBrowser browser, CefRange selectedRange, CefRect[] characterBounds)
+    protected override void OnImeCompositionRangeChanged(CefBrowser browser, CefRange selectedRange, CefRectangle[] characterBounds)
     {
-        // No action needed for offscreen rendering
     }
 
-    /// <summary>
-    /// Called when the browser needs accelerated paint handling.
-    /// </summary>
-    protected override void OnAcceleratedPaint(CefBrowser browser, CefPaintElementType type, CefRect[] dirtyRects, IntPtr sharedHandle)
+    protected override void OnAcceleratedPaint(CefBrowser browser, CefPaintElementType type, CefRectangle[] dirtyRects, IntPtr sharedHandle)
     {
-        // We use software rendering, not accelerated
     }
 
-    /// <summary>
-    /// Called when virtual keyboard is requested.
-    /// </summary>
     protected override void OnVirtualKeyboardRequested(CefBrowser browser, CefTextInputMode inputMode)
     {
-        // No virtual keyboard in this implementation
     }
 }

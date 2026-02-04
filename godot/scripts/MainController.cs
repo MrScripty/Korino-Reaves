@@ -289,7 +289,7 @@ public partial class MainController : Node
                 EventType = Xilium.CefGlue.CefKeyEventType.Char,
                 Character = (char)key.Unicode,
                 UnmodifiedCharacter = (char)key.Unicode,
-                WindowsKeyCode = key.Unicode,
+                WindowsKeyCode = (int)key.Unicode,
                 Modifiers = GetCefModifiers(key),
             };
             _browser.SendKeyEvent(charEvent);

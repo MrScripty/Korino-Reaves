@@ -483,7 +483,7 @@ public sealed class PatchApplier : IPatchApplier
                     }
                     break;
                 default:
-                    error = $"Cannot set value for property type: {property.PropertyType.Value.Value}";
+                    error = $"Cannot set value for property type: {property.PropertyType.Value}";
                     return false;
             }
 

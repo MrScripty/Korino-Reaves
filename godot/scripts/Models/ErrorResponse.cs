@@ -17,6 +17,7 @@ public static class ErrorCodes
     public const string InvalidValue = "INVALID_VALUE";
     public const string DiffFailed = "DIFF_FAILED";
     public const string AgentError = "AGENT_ERROR";
+    public const string InvalidRequest = "INVALID_REQUEST";
     public const string InternalError = "INTERNAL_ERROR";
 }
 

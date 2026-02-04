@@ -13,19 +13,19 @@ namespace UAssetViewer.Cef;
 /// </summary>
 public sealed class CefClientImpl : CefClient
 {
-    private readonly CefRenderHandler _renderHandler;
-    private readonly CefDisplayHandler _displayHandler;
+    private readonly OsrRenderHandler _renderHandler;
+    private readonly IpcDisplayHandler _displayHandler;
 
     public CefClientImpl(SharedState shared, IAppLogger logger)
     {
-        _renderHandler = new CefRenderHandler(shared, logger);
-        _displayHandler = new CefDisplayHandler(shared, logger);
+        _renderHandler = new OsrRenderHandler(shared, logger);
+        _displayHandler = new IpcDisplayHandler(shared, logger);
     }
 
     /// <summary>
     /// Gets the display handler for IPC interception.
     /// </summary>
-    public CefDisplayHandler DisplayHandler => _displayHandler;
+    public IpcDisplayHandler DisplayHandler => _displayHandler;
 
     protected override CefRenderHandler? GetRenderHandler()
     {
@@ -92,34 +92,8 @@ public sealed class CefClientImpl : CefClient
         return null;
     }
 
-    protected override CefPrintHandler? GetPrintHandler()
-    {
-        return null;
-    }
-
-    protected override CefPermissionHandler? GetPermissionHandler()
-    {
-        return null;
-    }
-
-    protected override CefAudioHandler? GetAudioHandler()
-    {
-        return null;
-    }
-
-    protected override CefCommandHandler? GetCommandHandler()
-    {
-        return null;
-    }
-
-    protected override CefFrameHandler? GetFrameHandler()
-    {
-        return null;
-    }
-
     protected override bool OnProcessMessageReceived(CefBrowser browser, CefFrame frame, CefProcessId sourceProcess, CefProcessMessage message)
     {
-        // No custom process messages
         return false;
     }
 }

@@ -223,8 +223,7 @@ public sealed class PropertyService
 
             EnumPropertyData => PropertyTypes.Enum,
 
-            ObjectPropertyData or SoftObjectPropertyData
-                or ClassPropertyData => PropertyTypes.Object,
+            ObjectPropertyData or SoftObjectPropertyData => PropertyTypes.Object,
 
             StructPropertyData structProp => structProp.StructType.Value.Value switch
             {
@@ -494,7 +493,7 @@ public sealed class PropertyService
             ObjectPropertyData =>
                 new PropertyMetadata(UeTypeName: "ObjectProperty"),
 
-            _ => new PropertyMetadata(UeTypeName: property.PropertyType.Value.Value)
+            _ => new PropertyMetadata(UeTypeName: property.PropertyType.Value)
         };
     }
 
@@ -546,7 +545,7 @@ public sealed class PropertyService
 
                 default:
                     throw new InvalidPropertyValueException(path, value,
-                        $"Cannot set value on property type: {property.PropertyType.Value.Value}");
+                        $"Cannot set value on property type: {property.PropertyType.Value}");
             }
         }
         catch (Exception ex) when (ex is not InvalidPropertyValueException)

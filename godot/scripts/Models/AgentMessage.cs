@@ -1,5 +1,6 @@
 namespace UAssetViewer.Models;
 
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 /// <summary>

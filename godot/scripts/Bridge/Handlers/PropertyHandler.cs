@@ -124,7 +124,7 @@ public sealed class PropertyHandler : IMessageHandler
         }
         catch (InvalidPropertyValueException ex)
         {
-            _logger.Warning("Invalid property value: {Path} = {Value}", string.Join("/", ex.Path), ex.Value);
+            _logger.Warning("Invalid property value: {Path} = {Value}", string.Join("/", ex.Path), ex.Value!);
             return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, ex.Message));
         }
         catch (Exception ex)

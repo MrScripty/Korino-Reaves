@@ -144,7 +144,7 @@ public sealed class AssetManager : IAssetService, ITreeService
     {
         if (_currentAsset != null)
         {
-            _logger.Info("Closing asset: {Path}", _currentPath);
+            _logger.Info("Closing asset: {Path}", _currentPath!);
             _currentAsset = null;
             _currentPath = null;
             _isModified = false;
@@ -200,7 +200,7 @@ public sealed class AssetManager : IAssetService, ITreeService
         try
         {
             var json = await File.ReadAllTextAsync(path);
-            _currentAsset.DeserializeJson(json);
+            _currentAsset = UAsset.DeserializeJson(json);
             _isModified = true;
 
             // Reinitialize tree builder with updated asset
@@ -313,6 +313,7 @@ public sealed class AssetManager : IAssetService, ITreeService
     /// <summary>
     /// Gets the underlying UAsset for advanced operations.
     /// </summary>
+    public UAsset? CurrentUAsset => _currentAsset;
     internal UAsset? GetRawAsset() => _currentAsset;
 
     private AssetInfo BuildAssetInfo()

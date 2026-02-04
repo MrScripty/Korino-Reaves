@@ -10,9 +10,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using CUE4Parse.FileProvider;
 using CUE4Parse.FileProvider.Vfs;
+using CUE4Parse.Encryption.Aes;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using UAssetAPI;
+using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetViewer.Infrastructure;
 
@@ -87,8 +89,8 @@ public sealed class PakManager : IDisposable
             _provider = new DefaultFileProvider(
                 pakDirectory,
                 SearchOption.AllDirectories,
-                isCaseInsensitive: true,
-                versions: new VersionContainer(gameVersion)
+                versions: new VersionContainer(gameVersion),
+                pathComparer: StringComparer.OrdinalIgnoreCase
             );
 
             // Initialize the provider
@@ -153,7 +155,7 @@ public sealed class PakManager : IDisposable
     {
         if (_provider != null)
         {
-            _logger.Info("Closing PAK: {Path}", _currentPakPath);
+            _logger.Info("Closing PAK: {Path}", _currentPakPath!);
             _provider.Dispose();
             _provider = null;
             _currentPakPath = null;

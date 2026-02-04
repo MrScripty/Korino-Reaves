@@ -8,7 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using UAssetAPI;
-using UAssetAPI.IO;
+using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetViewer.Infrastructure;
 
