@@ -239,6 +239,18 @@ cmd_run() {
         export LD_LIBRARY_PATH="${CEF_PATH}:${LD_LIBRARY_PATH:-}"
     fi
 
+    # Set CEF helper binary path
+    local helper_bin="$CEF_HELPER/bin/Release/net8.0/CefHelper"
+    if [[ ! -f "$helper_bin" ]]; then
+        helper_bin="$CEF_HELPER/bin/Debug/net8.0/CefHelper"
+    fi
+    if [[ -f "$helper_bin" ]]; then
+        export CEF_HELPER_PATH="$helper_bin"
+        log "CEF_HELPER_PATH=$CEF_HELPER_PATH"
+    else
+        warn "CefHelper binary not found. Run '$0 build' first."
+    fi
+
     log "Launching with: $godot_bin"
     exec "$godot_bin" --path "$GODOT_PROJECT"
 }
