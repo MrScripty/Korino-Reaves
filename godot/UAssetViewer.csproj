@@ -7,6 +7,7 @@
     <RootNamespace>UAssetViewer</RootNamespace>
     <AssemblyName>UAssetViewer</AssemblyName>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>

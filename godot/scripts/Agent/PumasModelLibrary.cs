@@ -1,17 +1,24 @@
 // Pumas Model Library - pumas-core UniFFI integration
 //
 // Wraps pumas-core via UniFFI-generated C# bindings (P/Invoke).
-// Currently a stub returning empty results; will be connected
-// once uniffi-bindgen-cs --library mode generates FfiPumasApi bindings.
-//
-// The native symbols are present in libpumas_uniffi.so and verified
-// via nm. Awaiting tooling fix for auto-generated wrapper class.
+// Delegates all operations to FfiPumasApi from the generated bindings,
+// mapping between FFI types (uniffi.pumas_uniffi) and domain types
+// (UAssetViewer.Agent).
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UAssetViewer.Infrastructure;
+using FfiApi = uniffi.pumas_uniffi.FfiPumasApi;
+using FfiRecord = uniffi.pumas_uniffi.FfiModelRecord;
+using FfiSearch = uniffi.pumas_uniffi.FfiSearchResult;
+using FfiHfModel = uniffi.pumas_uniffi.FfiHuggingFaceModel;
+using FfiDownloadOption = uniffi.pumas_library.DownloadOption;
+using FfiDownloadRequest = uniffi.pumas_library.DownloadRequest;
+using FfiDownloadProgress = uniffi.pumas_library.ModelDownloadProgress;
+using FfiException = uniffi.pumas_uniffi.FfiException;
 
 namespace UAssetViewer.Agent;
 
@@ -22,19 +29,8 @@ public sealed class PumasModelLibrary : IModelLibrary, IDisposable
 {
     private readonly IAppLogger _logger;
     private readonly string _launcherRoot;
-    private bool _initialized;
+    private FfiApi? _api;
     private bool _disposed;
-
-    // TODO: Replace with generated FfiPumasApi handle once bindings are available.
-    // The native library (libpumas_uniffi.so) exports all required symbols:
-    //   uniffi_pumas_uniffi_fn_constructor_ffipumasapi_new
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_list_models
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_search_models
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_search_hf_models
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_start_hf_download
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_get_hf_download_progress
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_cancel_hf_download
-    //   uniffi_pumas_uniffi_fn_method_ffipumasapi_is_online
 
     public PumasModelLibrary(string launcherRoot, IAppLogger logger)
     {
@@ -43,7 +39,7 @@ public sealed class PumasModelLibrary : IModelLibrary, IDisposable
     }
 
     /// <inheritdoc />
-    public bool IsAvailable => _initialized;
+    public bool IsAvailable => _api != null;
 
     /// <summary>
     /// Initializes the connection to pumas-core.
@@ -52,99 +48,185 @@ public sealed class PumasModelLibrary : IModelLibrary, IDisposable
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ct.ThrowIfCancellationRequested();
 
         _logger.Info("Initializing PumasModelLibrary with root: {Root}", _launcherRoot);
 
-        // TODO: Call FfiPumasApi.New(_launcherRoot) when bindings are available.
-        // For now, mark as initialized to allow the rest of the system to work.
-        await Task.CompletedTask;
-        _initialized = true;
-
-        _logger.Info("PumasModelLibrary initialized (stub mode - awaiting UniFFI bindings)");
+        try
+        {
+            _api = await FfiApi.WithOptions(_launcherRoot, autoCreateDirs: true, enableHf: true)
+                .ConfigureAwait(false);
+            _logger.Info("PumasModelLibrary initialized successfully");
+        }
+        catch (FfiException ex)
+        {
+            _logger.Error(ex, "Failed to initialize pumas-core: {Message}", ex.Message);
+            throw;
+        }
     }
 
     /// <inheritdoc />
-    public Task<List<ModelRecord>> ListModelsAsync(CancellationToken ct = default)
+    public async Task<List<ModelRecord>> ListModelsAsync(CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(ListModelsAsync));
-        return Task.FromResult(new List<ModelRecord>());
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        var ffiModels = await _api!.ListModels().ConfigureAwait(false);
+        return ffiModels.Select(MapModelRecord).ToList();
     }
 
     /// <inheritdoc />
-    public Task<ModelRecord?> GetModelAsync(string modelId, CancellationToken ct = default)
+    public async Task<ModelRecord?> GetModelAsync(string modelId, CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(GetModelAsync));
-        return Task.FromResult<ModelRecord?>(null);
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        var ffiModel = await _api!.GetModel(modelId).ConfigureAwait(false);
+        return ffiModel != null ? MapModelRecord(ffiModel) : null;
     }
 
     /// <inheritdoc />
-    public Task<ModelSearchResult> SearchModelsAsync(
+    public async Task<ModelSearchResult> SearchModelsAsync(
         string query, int limit = 20, int offset = 0, CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(SearchModelsAsync));
-        return Task.FromResult(new ModelSearchResult(
-            new List<ModelRecord>(),
-            TotalCount: 0,
-            QueryTimeMs: 0,
-            Query: query
-        ));
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        var ffiResult = await _api!.SearchModels(query, (ulong)limit, (ulong)offset)
+            .ConfigureAwait(false);
+        return MapSearchResult(ffiResult);
     }
 
     /// <inheritdoc />
-    public Task<List<HuggingFaceModel>> SearchHuggingFaceAsync(
+    public async Task<List<HuggingFaceModel>> SearchHuggingFaceAsync(
         string query, string? kind = null, int limit = 10, CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(SearchHuggingFaceAsync));
-        return Task.FromResult(new List<HuggingFaceModel>());
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        var ffiModels = await _api!.SearchHfModels(query, kind, (ulong)limit)
+            .ConfigureAwait(false);
+        return ffiModels.Select(MapHuggingFaceModel).ToList();
     }
 
     /// <inheritdoc />
-    public Task<string> StartDownloadAsync(DownloadRequest request, CancellationToken ct = default)
+    public async Task<string> StartDownloadAsync(DownloadRequest request, CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(StartDownloadAsync));
-        throw new NotSupportedException(
-            "Model downloads not available - pumas-core UniFFI bindings not yet connected.");
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        var ffiRequest = MapDownloadRequest(request);
+        return await _api!.StartHfDownload(ffiRequest).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task<DownloadProgress?> GetDownloadProgressAsync(string downloadId, CancellationToken ct = default)
+    public async Task<DownloadProgress?> GetDownloadProgressAsync(string downloadId, CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(GetDownloadProgressAsync));
-        return Task.FromResult<DownloadProgress?>(null);
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        var ffiProgress = await _api!.GetHfDownloadProgress(downloadId).ConfigureAwait(false);
+        return ffiProgress != null ? MapDownloadProgress(ffiProgress) : null;
     }
 
     /// <inheritdoc />
-    public Task<bool> CancelDownloadAsync(string downloadId, CancellationToken ct = default)
+    public async Task<bool> CancelDownloadAsync(string downloadId, CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        LogStubWarning(nameof(CancelDownloadAsync));
-        return Task.FromResult(false);
+        EnsureInitialized();
+        ct.ThrowIfCancellationRequested();
+
+        return await _api!.CancelHfDownload(downloadId).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public bool IsOnline()
     {
-        // Default to true until pumas-core connection is established.
-        return true;
+        if (_api == null) return false;
+        return _api.IsOnline();
     }
 
-    private void LogStubWarning(string method)
+    // =========================================================================
+    // Type Mapping Helpers
+    // =========================================================================
+
+    private static ModelRecord MapModelRecord(FfiRecord r) => new(
+        Id: r.id,
+        Path: r.path,
+        CleanedName: r.cleanedName,
+        OfficialName: r.officialName,
+        ModelType: r.modelType,
+        Tags: r.tags,
+        HashesJson: r.hashesJson,
+        MetadataJson: r.metadataJson,
+        UpdatedAt: r.updatedAt
+    );
+
+    private static ModelSearchResult MapSearchResult(FfiSearch r) => new(
+        Models: r.models.Select(MapModelRecord).ToList(),
+        TotalCount: (long)r.totalCount,
+        QueryTimeMs: r.queryTimeMs,
+        Query: r.query
+    );
+
+    private static HuggingFaceModel MapHuggingFaceModel(FfiHfModel m) => new(
+        RepoId: m.repoId,
+        Name: m.name,
+        Developer: m.developer,
+        Kind: m.kind,
+        Formats: m.formats,
+        Quants: m.quants,
+        DownloadOptions: m.downloadOptions.Select(MapDownloadOption).ToList(),
+        Url: m.url,
+        ReleaseDate: m.releaseDate,
+        Downloads: m.downloads.HasValue ? (long)m.downloads.Value : null,
+        TotalSizeBytes: m.totalSizeBytes.HasValue ? (long)m.totalSizeBytes.Value : null,
+        QuantSizesJson: m.quantSizesJson,
+        CompatibleEngines: m.compatibleEngines
+    );
+
+    private static DownloadOption MapDownloadOption(FfiDownloadOption o) => new(
+        Quant: o.quant,
+        SizeBytes: o.sizeBytes.HasValue ? (long)o.sizeBytes.Value : null
+    );
+
+    private static FfiDownloadRequest MapDownloadRequest(DownloadRequest r) => new(
+        repoId: r.RepoId,
+        family: r.Family,
+        officialName: r.OfficialName,
+        modelType: r.ModelType,
+        quant: r.Quant,
+        filename: r.Filename
+    );
+
+    private static DownloadProgress MapDownloadProgress(FfiDownloadProgress p) => new(
+        DownloadId: p.downloadId,
+        RepoId: p.repoId,
+        Status: p.status.ToString(),
+        Progress: p.progress,
+        DownloadedBytes: p.downloadedBytes.HasValue ? (long)p.downloadedBytes.Value : null,
+        TotalBytes: p.totalBytes.HasValue ? (long)p.totalBytes.Value : null,
+        Speed: p.speed,
+        EtaSeconds: p.etaSeconds,
+        Error: p.error
+    );
+
+    // =========================================================================
+    // Internal Helpers
+    // =========================================================================
+
+    private void EnsureInitialized()
     {
-        _logger.Debug(
-            "PumasModelLibrary.{Method} called in stub mode - returning empty result", method);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_api == null)
+            throw new InvalidOperationException(
+                "PumasModelLibrary has not been initialized. Call InitializeAsync() first.");
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _initialized = false;
-        // TODO: Dispose FfiPumasApi handle when bindings are available.
+        _api?.Dispose();
+        _api = null;
     }
 }

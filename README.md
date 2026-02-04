@@ -48,10 +48,22 @@ Example 3: `UAssetGUI test.uasset 23`
 
 Example 4: `UAssetGUI test.uasset VER_UE5_4 Bellwright`
 
+## Native Dependencies
+
+The AI agent module requires `libpumas_uniffi.so` from pumas-library for local model management. During development, this is symlinked from your local pumas-library build:
+
+```bash
+ln -sf /path/to/pumas-library/rust/target/release/libpumas_uniffi.so godot/libpumas_uniffi.so
+```
+
+pumas-library should consider distributing pre-built native bindings via a package manager (NuGet, PyPI) in the future to simplify this setup.
+
 ## Compilation
+
 If you'd like to compile UAssetGUI for yourself, read on:
 
 ### Prerequisites
+
 * Visual Studio 2022 or later
 * Git
 

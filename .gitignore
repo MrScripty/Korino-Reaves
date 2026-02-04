@@ -5,3 +5,6 @@ TestResults
 UAssetGUI/bin
 UAssetGUI/obj
 UAssetGUI/git_commit.txt
+
+# Native libraries (symlinked from pumas-library build)
+*.so

@@ -12,9 +12,10 @@ including mod porting between game versions.
 - `AgentManager.cs` - Semantic Kernel initialization and prompt execution
 - `AgentHandler.cs` - IPC handler for frontend communication
 - `IModelLibrary.cs` - Interface for pumas-core model management
-- `PumasModelLibrary.cs` - pumas-core UniFFI integration (stub pending full bindings)
+- `PumasModelLibrary.cs` - pumas-core UniFFI integration via generated C# bindings
 - `Plugins/` - Semantic Kernel plugins exposing app functionality to the AI
 - `Workflows/` - Pre-built agent workflows for common tasks
+- `Generated/` - Auto-generated UniFFI C# bindings (do not edit manually)
 
 ### Plugins
 
@@ -33,7 +34,7 @@ including mod porting between game versions.
 
 - **Semantic Kernel** chosen for native C# support and excellent tool-calling API
 - **Ollama** as default LLM runtime for local, privacy-preserving inference
-- **pumas-core via UniFFI** for model management (pending full C# binding generation)
+- **pumas-core via UniFFI** for model management with auto-generated C# bindings
 - **DiffPlugin uses reflection** to avoid compile-time coupling with the Diff module
 - **AgentManager.Create()** factory pattern ensures all dependencies are validated upfront
 
@@ -41,7 +42,7 @@ including mod porting between game versions.
 
 - Internal: `Services/`, `Assets/`, `Bridge/`, `Models/`, `Infrastructure/`
 - External: `Microsoft.SemanticKernel`, `Microsoft.SemanticKernel.Connectors.Ollama`
-- Native: `libpumas_uniffi.so` (pumas-core via UniFFI, when available)
+- Native: `libpumas_uniffi.so` (pumas-core via UniFFI, symlinked from pumas-library build)
 
 ## Usage Examples
 
