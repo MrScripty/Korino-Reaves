@@ -13,7 +13,9 @@
     import TreeToolbar from '$lib/components/tree/TreeToolbar.svelte';
     import PropertyGrid from '$lib/components/properties/PropertyGrid.svelte';
     import Tabs from '$lib/components/common/Tabs.svelte';
-    import ExtractPakDialog from '$lib/components/dialogs/ExtractPakDialog.svelte';
+    import ImportPakDialog from '$lib/components/dialogs/ImportPakDialog.svelte';
+    import FileBrowser from '$lib/components/dialogs/FileBrowser.svelte';
+    import { fileBrowser } from '$lib/view-models/fileBrowser.svelte';
     import { LAYOUT } from '$lib/constants';
 
     // Bottom panel tabs
@@ -142,7 +144,17 @@
 </AppShell>
 
 <!-- Global dialogs -->
-<ExtractPakDialog />
+<ImportPakDialog />
+<FileBrowser
+    open={fileBrowser.isOpen}
+    title={fileBrowser.title}
+    mode={fileBrowser.mode}
+    filters={fileBrowser.filters}
+    initialPath={fileBrowser.initialPath}
+    basePath={fileBrowser.basePath}
+    onSelect={(path) => fileBrowser.handleSelect(path)}
+    onCancel={() => fileBrowser.handleCancel()}
+/>
 
 <style>
     .main-content {

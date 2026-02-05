@@ -2,18 +2,19 @@
     MenuBar Component
 
     Application menu bar with File, Edit, View, and Help menus.
-    All actions are forwarded to C# via IPC.
+    File dialogs use Svelte components, other actions forward to C# via IPC.
 -->
 <script lang="ts">
     import { ipc } from '$lib/bridge/ipc';
     import { asset } from '$lib/view-models/asset.svelte';
-    // Register dialog listeners for file picker responses
-    import '$lib/bridge/dialogListeners';
+    import { project } from '$lib/view-models/project.svelte';
+    import { pak } from '$lib/view-models/pak.svelte';
+    import { fileBrowser } from '$lib/view-models/fileBrowser.svelte';
 
     interface MenuItem {
         label: string;
         action?: string;
-        type?: string; // IPC message type (defaults to 'asset')
+        type?: string; // IPC message type or 'svelte' for Svelte dialogs
         shortcut?: string;
         disabled?: boolean;
         separator?: boolean;
@@ -25,15 +26,19 @@
 
     const menus: Record<string, MenuItem[]> = {
         File: [
-            { label: 'Open...', type: 'dialog', action: 'showOpen', shortcut: 'Ctrl+O' },
+            { label: 'Open Project...', type: 'svelte', action: 'openProject', shortcut: 'Ctrl+O' },
+            { label: 'Import PAK...', type: 'svelte', action: 'importPak', shortcut: 'Ctrl+I' },
+            { separator: true, label: '' },
+            { label: 'Open Asset...', type: 'svelte', action: 'openAsset' },
             { label: 'Open Recent', submenu: [] },
             { separator: true, label: '' },
             { label: 'Save', type: 'asset', action: 'save', shortcut: 'Ctrl+S', disabled: !asset.hasAsset() },
-            { label: 'Save As...', type: 'dialog', action: 'showSave', shortcut: 'Ctrl+Shift+S', disabled: !asset.hasAsset() },
+            { label: 'Save As...', type: 'svelte', action: 'saveAs', shortcut: 'Ctrl+Shift+S', disabled: !asset.hasAsset() },
             { separator: true, label: '' },
-            { label: 'Export JSON...', type: 'dialog', action: 'showExport', disabled: !asset.hasAsset() },
+            { label: 'Export JSON...', type: 'svelte', action: 'exportJson', disabled: !asset.hasAsset() },
             { separator: true, label: '' },
-            { label: 'Close', type: 'asset', action: 'close', disabled: !asset.hasAsset() },
+            { label: 'Close Project', type: 'project', action: 'close', disabled: !project.hasProject },
+            { label: 'Close Asset', type: 'asset', action: 'close', disabled: !asset.hasAsset() },
         ],
         Edit: [
             { label: 'Undo', action: 'edit.undo', shortcut: 'Ctrl+Z' },
@@ -68,14 +73,88 @@
     function handleItemClick(item: MenuItem) {
         if (item.disabled || item.separator || item.submenu) return;
 
+        // Handle Svelte-based dialogs
+        if (item.type === 'svelte' && item.action) {
+            handleSvelteAction(item.action);
+            openMenu = null;
+            return;
+        }
+
+        // Handle IPC-based actions
         if (item.action) {
-            ipc.send({
+            const message = {
                 type: item.type ?? 'asset',
                 action: item.action,
                 payload: {},
-            });
+            };
+            console.log('[MenuBar] Sending IPC message:', message);
+            ipc.send(message);
         }
         openMenu = null;
+    }
+
+    function handleSvelteAction(action: string) {
+        switch (action) {
+            case 'openProject':
+                fileBrowser.openProjectDialog((path) => {
+                    console.log('[MenuBar] Project selected:', path);
+                    project.openProject(path);
+                });
+                break;
+
+            case 'importPak':
+                fileBrowser.openImportPakDialog((path) => {
+                    console.log('[MenuBar] PAK file selected:', path);
+                    pak.openDialog(path);
+                });
+                break;
+
+            case 'openAsset':
+                fileBrowser.openAssetDialog((path) => {
+                    console.log('[MenuBar] Asset selected:', path);
+                    // If it's a PAK, open import dialog; otherwise open directly
+                    if (path.toLowerCase().endsWith('.pak')) {
+                        pak.openDialog(path);
+                    } else {
+                        ipc.send({
+                            type: 'asset',
+                            action: 'open',
+                            payload: { filePath: path },
+                        });
+                    }
+                });
+                break;
+
+            case 'saveAs':
+                fileBrowser.open({
+                    title: 'Save Asset As',
+                    mode: 'file',
+                    filters: ['*.uasset', '*.umap'],
+                    onSelect: (path) => {
+                        console.log('[MenuBar] Save As path:', path);
+                        ipc.send({
+                            type: 'asset',
+                            action: 'saveAs',
+                            payload: { filePath: path },
+                        });
+                    },
+                });
+                break;
+
+            case 'exportJson':
+                fileBrowser.openExportDialog((path) => {
+                    console.log('[MenuBar] Export path:', path);
+                    ipc.send({
+                        type: 'asset',
+                        action: 'export',
+                        payload: { filePath: path },
+                    });
+                });
+                break;
+
+            default:
+                console.warn('[MenuBar] Unknown Svelte action:', action);
+        }
     }
 
     function handleClickOutside(event: MouseEvent) {

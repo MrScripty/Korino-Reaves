@@ -2,23 +2,28 @@
  * Dialog Listeners
  *
  * Handles responses from native file dialogs shown by the C# backend.
- * Routes file selections to appropriate asset operations.
+ * Routes file selections to appropriate operations.
  */
 
 import { ipc } from './ipc';
 import { asset } from '$lib/view-models/asset.svelte';
 import { pak } from '$lib/view-models/pak.svelte';
+import { project } from '$lib/view-models/project.svelte';
 
-// Handle file selected from open dialog
+// Handle file selected from dialogs
 ipc.onAction<{ filePath: string; dialogAction: string }>('dialog', 'fileSelected', (payload) => {
     switch (payload.dialogAction) {
+        case 'importPak':
+            // Open import dialog for PAK file
+            pak.openDialog(payload.filePath);
+            break;
+        case 'openProject':
+            // Open the selected project directory
+            project.openProject(payload.filePath);
+            break;
         case 'open':
-            // Check if it's a PAK file
-            if (payload.filePath.toLowerCase().endsWith('.pak')) {
-                pak.openDialog(payload.filePath);
-            } else {
-                asset.openAsset({ filePath: payload.filePath });
-            }
+            // Open individual asset file
+            asset.openAsset({ filePath: payload.filePath });
             break;
         case 'save':
             asset.saveAssetAs(payload.filePath);
