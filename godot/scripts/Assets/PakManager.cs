@@ -16,6 +16,7 @@ using CUE4Parse.UE4.Versions;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetViewer.Assets.Compression;
 using UAssetViewer.Infrastructure;
 
 namespace UAssetViewer.Assets;
@@ -41,11 +42,18 @@ public sealed class PakManager : IDisposable
     private readonly IAppLogger _logger;
     private readonly AssetLoader _assetLoader;
     private DefaultFileProvider? _provider;
+    private DefaultFileProvider[]? _providerPool;
     private string? _currentPakPath;
+    private EGame _currentGameVersion = EGame.GAME_UE5_3;
     private bool _disposed;
 
     public bool IsOpen => _provider != null;
     public string? CurrentPath => _currentPakPath;
+
+    /// <summary>
+    /// Gets whether compression libraries have been successfully initialized.
+    /// </summary>
+    public static bool IsCompressionInitialized => CompressionInitializerFactory.IsInitialized;
 
     public PakManager(IAppLogger logger)
     {
@@ -63,6 +71,9 @@ public sealed class PakManager : IDisposable
         activity?.SetTag("pak.version", gameVersion.ToString());
 
         _logger.Info("Opening PAK: {Path}", path);
+
+        // Ensure compression libraries are initialized before mounting PAK files
+        CompressionInitializerFactory.EnsureInitialized(_logger);
 
         try
         {
@@ -100,6 +111,7 @@ public sealed class PakManager : IDisposable
             await Task.Run(() => _provider.Mount());
 
             _currentPakPath = path;
+            _currentGameVersion = gameVersion;
 
             _logger.Info("PAK opened successfully: {FileCount} files",
                 _provider.Files.Count);
@@ -153,6 +165,8 @@ public sealed class PakManager : IDisposable
     /// </summary>
     public void Close()
     {
+        CloseProviderPool();
+
         if (_provider != null)
         {
             _logger.Info("Closing PAK: {Path}", _currentPakPath!);
@@ -160,6 +174,109 @@ public sealed class PakManager : IDisposable
             _provider = null;
             _currentPakPath = null;
         }
+    }
+
+    /// <summary>
+    /// Creates a pool of file providers for parallel extraction.
+    /// Each provider has its own file handle, enabling true parallel I/O.
+    /// </summary>
+    /// <param name="poolSize">Number of providers to create (typically CPU cores - 1)</param>
+    public async Task CreateProviderPoolAsync(int poolSize)
+    {
+        if (_currentPakPath == null)
+        {
+            throw new InvalidOperationException("No PAK file is open");
+        }
+
+        CloseProviderPool();
+
+        _logger.Info("Creating provider pool with {Size} providers", poolSize);
+
+        string pakDirectory;
+        if (File.Exists(_currentPakPath))
+        {
+            pakDirectory = Path.GetDirectoryName(_currentPakPath)
+                ?? throw new InvalidOperationException("Invalid PAK path");
+        }
+        else
+        {
+            pakDirectory = _currentPakPath;
+        }
+
+        _providerPool = new DefaultFileProvider[poolSize];
+
+        // Create providers in parallel for faster initialization
+        var tasks = Enumerable.Range(0, poolSize).Select(async i =>
+        {
+            var provider = new DefaultFileProvider(
+                pakDirectory,
+                SearchOption.AllDirectories,
+                versions: new VersionContainer(_currentGameVersion),
+                pathComparer: StringComparer.OrdinalIgnoreCase
+            );
+
+            provider.Initialize();
+            await Task.Run(() => provider.Mount());
+
+            _providerPool[i] = provider;
+        });
+
+        await Task.WhenAll(tasks);
+
+        _logger.Info("Provider pool created successfully");
+    }
+
+    /// <summary>
+    /// Closes and disposes the provider pool.
+    /// </summary>
+    public void CloseProviderPool()
+    {
+        if (_providerPool != null)
+        {
+            foreach (var provider in _providerPool)
+            {
+                provider?.Dispose();
+            }
+            _providerPool = null;
+            _logger.Debug("Provider pool closed");
+        }
+    }
+
+    /// <summary>
+    /// Gets a provider from the pool by index (for round-robin assignment).
+    /// </summary>
+    public DefaultFileProvider? GetPooledProvider(int index)
+    {
+        if (_providerPool == null || _providerPool.Length == 0)
+        {
+            return null;
+        }
+        return _providerPool[index % _providerPool.Length];
+    }
+
+    /// <summary>
+    /// Gets the size of the provider pool.
+    /// </summary>
+    public int ProviderPoolSize => _providerPool?.Length ?? 0;
+
+    /// <summary>
+    /// Extracts a file using a specific provider from the pool.
+    /// This enables true parallel extraction with independent file handles.
+    /// </summary>
+    /// <param name="provider">The file provider to use for extraction.</param>
+    /// <param name="filePath">Path to the file within the PAK archive.</param>
+    /// <returns>The extracted file contents as a byte array.</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the file is not found in the PAK.</exception>
+    public async Task<byte[]> ExtractFileWithProviderAsync(DefaultFileProvider provider, string filePath)
+    {
+        var normalizedPath = NormalizePath(filePath);
+
+        if (!provider.Files.TryGetValue(normalizedPath, out var gameFile))
+        {
+            throw new FileNotFoundException($"File not found in PAK: {filePath}");
+        }
+
+        return await Task.Run(() => gameFile.Read());
     }
 
     /// <summary>
@@ -389,6 +506,7 @@ public sealed class PakManager : IDisposable
     {
         if (!_disposed)
         {
+            CloseProviderPool();
             _provider?.Dispose();
             _provider = null;
             _disposed = true;
