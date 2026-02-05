@@ -24,7 +24,9 @@ export type MessageType =
     | 'viewport'   // 3D/2D viewport commands
     | 'agent'      // AI agent status and commands
     | 'dialog'     // Native file dialogs (open, save)
-    | 'pak'        // PAK archive operations (extract, list)
+    | 'pak'        // PAK archive operations (import, list)
+    | 'project'    // Project operations (open, list)
+    | 'fs'         // Filesystem operations (list, navigate)
     | 'error'      // Error responses
     | 'test';      // Testing/ping-pong messages
 
@@ -62,6 +64,8 @@ export type TreeNodeType =
     | 'import'     // Import references
     | 'name'       // Name map entries
     | 'header'     // Asset header info
+    | 'folder'     // Filesystem folder
+    | 'file'       // Filesystem file
     | 'unknown';   // Fallback type
 
 /**
@@ -390,6 +394,46 @@ export interface OpenAssetRequest {
     filePath: string;
     /** Optional mappings file path (.usmap) */
     mappingsPath?: string;
+}
+
+// =============================================================================
+// Project Types
+// =============================================================================
+
+/**
+ * Information about a project (extracted PAK contents).
+ */
+export interface ProjectInfo {
+    /** Project name (directory name) */
+    name: string;
+    /** Full path to the project directory */
+    path: string;
+    /** Number of files in the project */
+    fileCount: number;
+    /** Last modification timestamp */
+    lastModified?: string;
+}
+
+/**
+ * Payload for streaming file extraction updates.
+ */
+export interface FileExtractedPayload {
+    /** Relative path of the extracted file within the project */
+    filePath: string;
+    /** Current file index (1-based) */
+    index: number;
+    /** Total number of files to extract */
+    total: number;
+}
+
+/**
+ * Payload for incremental tree updates during import.
+ */
+export interface IncrementalTreeUpdate {
+    /** New nodes to add */
+    nodes: TreeNode[];
+    /** Parent node ID (undefined = root level) */
+    parentId?: string;
 }
 
 // =============================================================================

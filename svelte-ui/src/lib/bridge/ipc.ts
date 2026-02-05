@@ -95,9 +95,8 @@ class IpcBridge {
             timestamp: Date.now(),
         };
 
-        if (this.debugMode) {
-            console.debug('[IPC →]', fullMessage);
-        }
+        // Always log outgoing messages for debugging
+        console.info('[IPC SEND]', fullMessage.type, fullMessage.action, fullMessage);
 
         if (this.mockMode) {
             this.handleMockMessage(fullMessage);
@@ -106,7 +105,9 @@ class IpcBridge {
 
         // Send via console.log with IPC prefix
         // C# intercepts this via DisplayHandler.OnConsoleMessage
-        console.log(IPC_PREFIX + JSON.stringify(fullMessage));
+        const ipcPayload = IPC_PREFIX + JSON.stringify(fullMessage);
+        console.info('[IPC RAW]', ipcPayload.substring(0, 100) + '...');
+        console.log(ipcPayload);
     }
 
     /**

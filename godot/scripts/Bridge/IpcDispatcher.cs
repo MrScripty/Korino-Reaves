@@ -89,6 +89,8 @@ public sealed class IpcDispatcher : IDisposable
         RegisterHandler(new SelectionHandler(_logger));
         RegisterHandler(new DiffHandler(_logger, _assetManager));
         RegisterHandler(new PakHandler(_logger, this));
+        RegisterHandler(new ProjectHandler(_logger, this));
+        RegisterHandler(new FilesystemHandler(_logger));
     }
 
     /// <summary>
@@ -131,6 +133,10 @@ public sealed class IpcDispatcher : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         using var scope = _logger.BeginScope($"Dispatch:{message.Type}:{message.Action}");
+        _logger.Info("[DispatchAsync] Dispatching: type={Type}, action={Action}", message.Type, message.Action);
+
+        // Log registered handlers for debugging
+        _logger.Info("[DispatchAsync] Registered handlers: {Handlers}", string.Join(", ", _handlers.Keys));
 
         if (!_handlers.TryGetValue(message.Type, out var handler))
         {
@@ -139,6 +145,8 @@ public sealed class IpcDispatcher : IDisposable
             return;
         }
 
+        _logger.Info("[DispatchAsync] Found handler: {HandlerType}", handler.GetType().Name);
+
         if (!handler.CanHandle(message.Action))
         {
             _logger.Warning("Handler {Type} cannot handle action: {Action}", message.Type, message.Action);
@@ -146,9 +154,13 @@ public sealed class IpcDispatcher : IDisposable
             return;
         }
 
+        _logger.Info("[DispatchAsync] Handler can handle action, calling HandleAsync...");
+
         try
         {
+            _logger.Info("[DispatchAsync] Calling handler.HandleAsync...");
             var response = await handler.HandleAsync(message).ConfigureAwait(false);
+            _logger.Info("[DispatchAsync] HandleAsync completed, response={HasResponse}", response != null);
 
             if (response != null)
             {
@@ -211,11 +223,14 @@ public sealed class IpcDispatcher : IDisposable
     /// </summary>
     private void OnIpcMessageReceived(string json)
     {
+        _logger.Info("[IpcDispatcher] Received raw IPC message: {Json}", json.Length > 200 ? json.Substring(0, 200) + "..." : json);
+
         try
         {
             var message = JsonSerializer.Deserialize<IpcMessage>(json);
             if (message != null)
             {
+                _logger.Info("[IpcDispatcher] Parsed message: type={Type}, action={Action}", message.Type, message.Action);
                 // Fire and forget - dispatch asynchronously
                 _ = DispatchAsync(message);
             }

@@ -16,6 +16,8 @@ public static class TreeNodeTypes
     public const string Import = "import";
     public const string Name = "name";
     public const string Header = "header";
+    public const string Folder = "folder";
+    public const string File = "file";
     public const string Unknown = "unknown";
 }
 

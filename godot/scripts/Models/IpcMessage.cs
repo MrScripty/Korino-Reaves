@@ -17,6 +17,7 @@ public static class MessageTypes
     public const string Agent = "agent";
     public const string Dialog = "dialog";
     public const string Pak = "pak";
+    public const string Project = "project";
     public const string Error = "error";
     public const string Test = "test";
 }

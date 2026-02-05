@@ -8,7 +8,7 @@
  */
 
 import { ipc } from '$lib/bridge/ipc';
-import type { TreeNode, SelectionState } from '$lib/bridge/types';
+import type { TreeNode, SelectionState, IncrementalTreeUpdate } from '$lib/bridge/types';
 
 class TreeVM {
     nodes = $state<TreeNode[]>([]);
@@ -121,10 +121,8 @@ export const tree = new TreeVM();
 // IPC Listeners
 // =============================================================================
 
-ipc.onAction<TreeNode[]>('tree', 'update', (payload) => {
-    tree.nodes = payload;
-    tree.isLoading = false;
-});
+// Note: tree:update handler is defined below with enhanced support for both
+// array and object payloads (for backwards compatibility)
 
 ipc.onAction<{ parentId: string; children: TreeNode[] }>(
     'tree',
@@ -146,6 +144,33 @@ ipc.onAction('asset', 'closed', () => {
 
 ipc.onAction<{ loading: boolean }>('tree', 'loading', (payload) => {
     tree.isLoading = payload.loading;
+});
+
+// Incremental tree update for streaming (during import)
+ipc.onAction<IncrementalTreeUpdate>('tree', 'incrementalUpdate', (payload) => {
+    if (payload.parentId) {
+        tree.nodes = mergeNodesIntoTree(tree.nodes, payload.parentId, payload.nodes);
+    } else {
+        // Add to root level
+        tree.nodes = [...tree.nodes, ...payload.nodes];
+    }
+});
+
+// Clear tree when project is closed
+ipc.onAction('project', 'closed', () => {
+    tree.nodes = [];
+    tree.selection = { selectedId: null, expandedIds: [] };
+    tree.filterQuery = '';
+});
+
+// Handle full tree update from project open (with nodes wrapper)
+ipc.onAction<{ nodes: TreeNode[] }>('tree', 'update', (payload) => {
+    if (Array.isArray(payload)) {
+        tree.nodes = payload;
+    } else if (payload.nodes) {
+        tree.nodes = payload.nodes;
+    }
+    tree.isLoading = false;
 });
 
 // =============================================================================
@@ -190,6 +215,33 @@ function updateNodeChildren(
             return {
                 ...node,
                 children: updateNodeChildren(node.children, parentId, children),
+            };
+        }
+        return node;
+    });
+}
+
+/**
+ * Merge new nodes into an existing tree structure at a given parent.
+ * Used for streaming/incremental tree updates during import.
+ */
+function mergeNodesIntoTree(
+    existing: TreeNode[],
+    parentId: string,
+    newNodes: TreeNode[]
+): TreeNode[] {
+    return existing.map((node) => {
+        if (node.id === parentId) {
+            return {
+                ...node,
+                children: [...(node.children || []), ...newNodes],
+                hasChildren: true,
+            };
+        }
+        if (node.children) {
+            return {
+                ...node,
+                children: mergeNodesIntoTree(node.children, parentId, newNodes),
             };
         }
         return node;

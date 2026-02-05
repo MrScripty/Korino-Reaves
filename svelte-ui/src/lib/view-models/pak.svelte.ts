@@ -1,26 +1,30 @@
 /**
  * PAK View Model
  *
- * Manages PAK extraction state and operations.
+ * Manages PAK import state and operations.
  * Communicates with C# backend for actual extraction work.
  */
 
 import { ipc } from '$lib/bridge/ipc';
+import type { FileExtractedPayload } from '$lib/bridge/types';
 
 class PakVM {
     // Dialog state
     showDialog = $state(false);
     pendingPakPath = $state<string | null>(null);
 
-    // Extraction state
-    isExtracting = $state(false);
+    // Import state
+    isImporting = $state(false);
     progress = $state(0);
     progressMessage = $state('');
     currentFile = $state(0);
     totalFiles = $state(0);
 
+    // Streaming file tracking
+    extractedFiles = $state<string[]>([]);
+
     // Result state
-    extractedPath = $state<string | null>(null);
+    importedPath = $state<string | null>(null);
     error = $state<string | null>(null);
 
     // Validation state
@@ -28,17 +32,18 @@ class PakVM {
     isValidating = $state(false);
 
     /**
-     * Opens the extraction dialog for a PAK file.
+     * Opens the import dialog for a PAK file.
      */
     openDialog(pakPath: string): void {
         this.pendingPakPath = pakPath;
         this.showDialog = true;
         this.error = null;
         this.projectNameError = null;
+        this.extractedFiles = [];
     }
 
     /**
-     * Closes the extraction dialog.
+     * Closes the import dialog.
      */
     closeDialog(): void {
         this.showDialog = false;
@@ -71,25 +76,26 @@ class PakVM {
     }
 
     /**
-     * Starts extraction of the pending PAK file.
+     * Starts import of the pending PAK file.
      */
-    startExtraction(projectName: string): void {
+    startImport(projectName: string): void {
         if (!this.pendingPakPath) {
             this.error = 'No PAK file selected';
             return;
         }
 
-        this.isExtracting = true;
+        this.isImporting = true;
         this.progress = 0;
-        this.progressMessage = 'Starting extraction...';
+        this.progressMessage = 'Starting import...';
         this.currentFile = 0;
         this.totalFiles = 0;
+        this.extractedFiles = [];
         this.error = null;
         this.showDialog = false;
 
         ipc.send({
             type: 'pak',
-            action: 'extract',
+            action: 'import',
             payload: {
                 pakPath: this.pendingPakPath,
                 projectName,
@@ -98,9 +104,9 @@ class PakVM {
     }
 
     /**
-     * Cancels ongoing extraction.
+     * Cancels ongoing import.
      */
-    cancelExtraction(): void {
+    cancelImport(): void {
         ipc.send({
             type: 'pak',
             action: 'cancel',
@@ -109,14 +115,15 @@ class PakVM {
     }
 
     /**
-     * Resets state after extraction completes or fails.
+     * Resets state after import completes or fails.
      */
     reset(): void {
-        this.isExtracting = false;
+        this.isImporting = false;
         this.progress = 0;
         this.progressMessage = '';
         this.currentFile = 0;
         this.totalFiles = 0;
+        this.extractedFiles = [];
         this.pendingPakPath = null;
     }
 }
@@ -137,9 +144,9 @@ ipc.onAction<{ name: string; isValid: boolean; error: string | null }>('pak', 'n
     }
 });
 
-// Extraction started acknowledgment
-ipc.onAction<{ projectName: string }>('pak', 'extractionStarted', (payload) => {
-    pak.progressMessage = `Extracting to ${payload.projectName}...`;
+// Import started acknowledgment
+ipc.onAction<{ projectName: string }>('pak', 'importStarted', (payload) => {
+    pak.progressMessage = `Importing to ${payload.projectName}...`;
 });
 
 // Progress updates
@@ -150,26 +157,33 @@ ipc.onAction<{ current: number; total: number; message: string; percent: number 
     pak.progressMessage = payload.message;
 });
 
-// Extraction complete
-ipc.onAction<{ outputPath: string; fileCount: number }>('pak', 'extractionComplete', (payload) => {
-    pak.extractedPath = payload.outputPath;
-    pak.isExtracting = false;
+// Streaming file extracted updates
+ipc.onAction<FileExtractedPayload>('pak', 'fileExtracted', (payload) => {
+    pak.extractedFiles = [...pak.extractedFiles, payload.filePath];
+    pak.currentFile = payload.index;
+    pak.totalFiles = payload.total;
+});
+
+// Import complete
+ipc.onAction<{ outputPath: string; fileCount: number }>('pak', 'importComplete', (payload) => {
+    pak.importedPath = payload.outputPath;
+    pak.isImporting = false;
     pak.progress = 100;
-    pak.progressMessage = `Extracted ${payload.fileCount} files`;
+    pak.progressMessage = `Imported ${payload.fileCount} files`;
     // Keep the success state for a moment, then reset
     setTimeout(() => pak.reset(), 2000);
 });
 
-// Extraction cancelled
-ipc.onAction('pak', 'extractionCancelled', () => {
-    pak.isExtracting = false;
-    pak.progressMessage = 'Extraction cancelled';
+// Import cancelled
+ipc.onAction('pak', 'importCancelled', () => {
+    pak.isImporting = false;
+    pak.progressMessage = 'Import cancelled';
     setTimeout(() => pak.reset(), 1000);
 });
 
-// Extraction error
-ipc.onAction<{ error: string }>('pak', 'extractionError', (payload) => {
+// Import error
+ipc.onAction<{ error: string }>('pak', 'importError', (payload) => {
     pak.error = payload.error;
-    pak.isExtracting = false;
-    pak.progressMessage = 'Extraction failed';
+    pak.isImporting = false;
+    pak.progressMessage = 'Import failed';
 });

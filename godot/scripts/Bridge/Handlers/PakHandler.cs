@@ -65,7 +65,7 @@ public sealed class PakHandler : IMessageHandler
 
     public bool CanHandle(string action)
     {
-        return action is "extract" or "cancel" or "validateName";
+        return action is "extract" or "import" or "cancel" or "validateName";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
@@ -74,7 +74,7 @@ public sealed class PakHandler : IMessageHandler
 
         return message.Action switch
         {
-            "extract" => HandleExtract(message),
+            "extract" or "import" => HandleExtract(message),
             "cancel" => HandleCancel(message),
             "validateName" => HandleValidateName(message),
             _ => Task.FromResult<IpcMessage?>(null),
@@ -85,7 +85,7 @@ public sealed class PakHandler : IMessageHandler
     {
         if (_isExtracting)
         {
-            return CreateErrorResponse(message, "Extraction already in progress");
+            return CreateErrorResponse(message, "Import already in progress");
         }
 
         try
@@ -123,7 +123,7 @@ public sealed class PakHandler : IMessageHandler
             // Return immediate acknowledgment
             return new IpcMessage(
                 MessageTypes.Pak,
-                "extractionStarted",
+                "importStarted",
                 new { projectName = request.ProjectName },
                 message.Id,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
@@ -224,7 +224,7 @@ public sealed class PakHandler : IMessageHandler
                         // Thread-safe progress update
                         var count = Interlocked.Increment(ref extractedCount);
 
-                        // Rate-limit progress updates
+                        // Send streaming file extracted event (rate-limited)
                         if (count - lastProgressUpdate >= updateThreshold || count == totalFiles)
                         {
                             lock (progressLock)
@@ -233,7 +233,10 @@ public sealed class PakHandler : IMessageHandler
                                 {
                                     lastProgressUpdate = count;
                                     var percent = (int)((count * 100.0) / totalFiles);
-                                    SendProgress(requestId, count, totalFiles, $"Extracting... ({percent}%)");
+                                    SendProgress(requestId, count, totalFiles, $"Importing... ({percent}%)");
+
+                                    // Send streaming file extracted event
+                                    SendFileExtracted(requestId, file, count, totalFiles);
                                 }
                             }
                         }
@@ -247,10 +250,13 @@ public sealed class PakHandler : IMessageHandler
 
             _pakManager.Close();
 
-            _logger.Info("Extraction complete: {Count} files extracted to {OutputDir}", extractedCount, outputDir);
+            _logger.Info("Import complete: {Count} files extracted to {OutputDir}", extractedCount, outputDir);
 
             // Send completion
             SendComplete(requestId, outputDir, extractedCount);
+
+            // Auto-open the project
+            SendProjectOpened(request.ProjectName, outputDir, extractedCount);
         }
         catch (Exception ex)
         {
@@ -334,9 +340,31 @@ public sealed class PakHandler : IMessageHandler
     {
         _dispatcher.Send(new IpcMessage(
             MessageTypes.Pak,
-            "extractionComplete",
+            "importComplete",
             new { outputPath, fileCount },
             requestId,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        ));
+    }
+
+    private void SendFileExtracted(string? requestId, string filePath, int index, int total)
+    {
+        _dispatcher.Send(new IpcMessage(
+            MessageTypes.Pak,
+            "fileExtracted",
+            new { filePath, index, total },
+            requestId,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        ));
+    }
+
+    private void SendProjectOpened(string projectName, string projectPath, int fileCount)
+    {
+        _dispatcher.Send(new IpcMessage(
+            MessageTypes.Project,
+            "opened",
+            new { name = projectName, path = projectPath, fileCount },
+            null,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         ));
     }
@@ -345,7 +373,7 @@ public sealed class PakHandler : IMessageHandler
     {
         _dispatcher.Send(new IpcMessage(
             MessageTypes.Pak,
-            "extractionCancelled",
+            "importCancelled",
             null,
             requestId,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
@@ -356,7 +384,7 @@ public sealed class PakHandler : IMessageHandler
     {
         _dispatcher.Send(new IpcMessage(
             MessageTypes.Pak,
-            "extractionError",
+            "importError",
             new { error = errorMessage },
             requestId,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()

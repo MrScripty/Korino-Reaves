@@ -36,14 +36,18 @@ public sealed class DialogHandler : IMessageHandler
 
     public bool CanHandle(string action)
     {
-        return action is "showOpen" or "showSave" or "showExport";
+        return action is "showOpen" or "showSave" or "showExport" or "showImportPak" or "showOpenProject";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
     {
-        _logger.Info("DialogHandler received: action={Action}", message.Action);
+        _logger.Info("[DialogHandler] HandleAsync called: action={Action}", message.Action);
+        _logger.Info("[DialogHandler] Scene root valid: {Valid}, type: {Type}",
+            GodotObject.IsInstanceValid(_sceneRoot),
+            _sceneRoot?.GetType().Name ?? "null");
 
         // Dialog operations need to run on the main thread
+        _logger.Info("[DialogHandler] Deferring to main thread via CallDeferred...");
         Callable.From(() => HandleDialogOnMainThread(message)).CallDeferred();
 
         // Return null - we'll send the response asynchronously when the dialog closes
@@ -52,18 +56,34 @@ public sealed class DialogHandler : IMessageHandler
 
     private void HandleDialogOnMainThread(IpcMessage message)
     {
+        _logger.Info("[DialogHandler] HandleDialogOnMainThread called on main thread, action={Action}", message.Action);
+
         try
         {
             switch (message.Action)
             {
                 case "showOpen":
+                    _logger.Info("[DialogHandler] Calling ShowOpenDialog...");
                     ShowOpenDialog(message);
                     break;
                 case "showSave":
+                    _logger.Info("[DialogHandler] Calling ShowSaveDialog...");
                     ShowSaveDialog(message);
                     break;
                 case "showExport":
+                    _logger.Info("[DialogHandler] Calling ShowExportDialog...");
                     ShowExportDialog(message);
+                    break;
+                case "showImportPak":
+                    _logger.Info("[DialogHandler] Calling ShowImportPakDialog...");
+                    ShowImportPakDialog(message);
+                    break;
+                case "showOpenProject":
+                    _logger.Info("[DialogHandler] Calling ShowOpenProjectDialog...");
+                    ShowOpenProjectDialog(message);
+                    break;
+                default:
+                    _logger.Warning("[DialogHandler] Unknown action: {Action}", message.Action);
                     break;
             }
         }
@@ -116,23 +136,117 @@ public sealed class DialogHandler : IMessageHandler
         _fileDialog.PopupCentered();
     }
 
+    private void ShowImportPakDialog(IpcMessage message)
+    {
+        _logger.Info("[ShowImportPakDialog] Starting...");
+
+        _pendingRequestId = message.Id;
+        _pendingAction = "importPak";
+
+        EnsureFileDialog();
+        _fileDialog!.FileMode = FileDialog.FileModeEnum.OpenFile;
+        _fileDialog.Title = "Import PAK Archive";
+        _fileDialog.Filters = new[] { "*.pak" };
+
+        _logger.Info("[ShowImportPakDialog] FileDialog configured: Mode={Mode}, Title={Title}, Filters={Filters}",
+            _fileDialog.FileMode, _fileDialog.Title, string.Join(", ", _fileDialog.Filters));
+
+        _logger.Info("[ShowImportPakDialog] FileDialog state before popup: Visible={Visible}, IsInsideTree={Inside}",
+            _fileDialog.Visible, _fileDialog.IsInsideTree());
+
+        _logger.Info("[ShowImportPakDialog] Calling PopupCentered...");
+        _fileDialog.PopupCentered();
+
+        _logger.Info("[ShowImportPakDialog] After PopupCentered: Visible={Visible}",
+            _fileDialog.Visible);
+    }
+
+    private void ShowOpenProjectDialog(IpcMessage message)
+    {
+        _logger.Info("[ShowOpenProjectDialog] Starting...");
+
+        _pendingRequestId = message.Id;
+        _pendingAction = "openProject";
+
+        EnsureFileDialog();
+        _fileDialog!.FileMode = FileDialog.FileModeEnum.OpenDir;
+        _fileDialog.Title = "Open Project";
+        _fileDialog.Filters = Array.Empty<string>(); // No filters for directory selection
+
+        _logger.Info("[ShowOpenProjectDialog] FileDialog configured: Mode={Mode}, Title={Title}",
+            _fileDialog.FileMode, _fileDialog.Title);
+
+        // Set initial directory to projects folder
+        var projectRoot = ProjectSettings.GlobalizePath("res://").TrimEnd('/');
+        projectRoot = System.IO.Path.GetDirectoryName(projectRoot) ?? projectRoot;
+        var projectsDir = System.IO.Path.Combine(projectRoot, "projects");
+        _logger.Info("[ShowOpenProjectDialog] Projects directory: {Dir}, exists: {Exists}", projectsDir, System.IO.Directory.Exists(projectsDir));
+
+        if (System.IO.Directory.Exists(projectsDir))
+        {
+            _fileDialog.CurrentDir = projectsDir;
+            _logger.Info("[ShowOpenProjectDialog] Set CurrentDir to: {Dir}", _fileDialog.CurrentDir);
+        }
+
+        _logger.Info("[ShowOpenProjectDialog] FileDialog state before popup: Visible={Visible}, IsInsideTree={Inside}",
+            _fileDialog.Visible, _fileDialog.IsInsideTree());
+
+        _logger.Info("[ShowOpenProjectDialog] Calling PopupCentered...");
+        _fileDialog.PopupCentered();
+
+        _logger.Info("[ShowOpenProjectDialog] After PopupCentered: Visible={Visible}",
+            _fileDialog.Visible);
+    }
+
     private void EnsureFileDialog()
     {
         if (_fileDialog != null && GodotObject.IsInstanceValid(_fileDialog))
         {
+            _logger.Info("[EnsureFileDialog] Reusing existing FileDialog");
             return;
         }
+
+        _logger.Info("[EnsureFileDialog] Creating new FileDialog...");
 
         _fileDialog = new FileDialog
         {
             Access = FileDialog.AccessEnum.Filesystem,
-            UseNativeDialog = true,
+            // Disable native dialogs - they can be unreliable on Linux
+            UseNativeDialog = false,
+            // Set a reasonable size for the Godot built-in dialog
+            Size = new Godot.Vector2I(800, 600),
         };
 
+        _logger.Info("[EnsureFileDialog] FileDialog created, UseNativeDialog={UseNative}, Size={Size}",
+            _fileDialog.UseNativeDialog, _fileDialog.Size);
+
         _fileDialog.FileSelected += OnFileSelected;
+        _fileDialog.DirSelected += OnDirSelected;
         _fileDialog.Canceled += OnDialogCanceled;
 
+        _logger.Info("[EnsureFileDialog] Event handlers attached");
+        _logger.Info("[EnsureFileDialog] Adding to scene root: {SceneRoot}", _sceneRoot.Name);
+
         _sceneRoot.AddChild(_fileDialog);
+
+        _logger.Info("[EnsureFileDialog] FileDialog added to scene tree, IsInsideTree={Inside}",
+            _fileDialog.IsInsideTree());
+    }
+
+    private void OnDirSelected(string path)
+    {
+        _logger.Info("Directory selected: {Path}", path);
+
+        var response = new IpcMessage(
+            MessageTypes.Dialog,
+            "fileSelected",
+            new { filePath = path, dialogAction = _pendingAction },
+            _pendingRequestId,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        );
+
+        _dispatcher.Send(response);
+        ClearPending();
     }
 
     private void OnFileSelected(string path)
