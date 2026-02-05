@@ -208,8 +208,9 @@ cmd_build() {
         warn "CEF runtime files not found in build output — run 'cargo build --release' in cef-gdext first"
     fi
 
-    # Build the .NET solution
+    # Build the .NET solution (both Debug for Godot runtime and Release for distribution)
     log "Building solution: $SOLUTION"
+    dotnet build "$SOLUTION" --configuration Debug
     dotnet build "$SOLUTION" --configuration Release
 
     # Build Svelte UI if Node.js is available
