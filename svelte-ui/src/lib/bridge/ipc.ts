@@ -59,8 +59,10 @@ class IpcBridge {
     private debugMode = false;
 
     constructor() {
-        // Expose receiver function for C# to call
-        this.setupReceiver();
+        // Expose receiver function for C# to call (only in browser)
+        if (typeof window !== 'undefined') {
+            this.setupReceiver();
+        }
     }
 
     /**
@@ -83,6 +85,11 @@ class IpcBridge {
      * @param message The message to send
      */
     send(message: Omit<IpcMessage, 'timestamp'>): void {
+        // Skip sending during SSR
+        if (typeof window === 'undefined') {
+            return;
+        }
+
         const fullMessage: IpcMessage = {
             ...message,
             timestamp: Date.now(),
