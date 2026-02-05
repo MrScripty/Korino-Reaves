@@ -701,6 +701,102 @@ select:disabled {
 }
 
 /* =============================================================================
+   Button Variants
+   ============================================================================= */
+
+.btn {
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--bg-active);
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    border: 1px solid transparent;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--accent-primary-hover);
+}
+
+/* =============================================================================
+   Content State Indicators
+   ============================================================================= */
+
+.state-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+.state-loading {
+    color: var(--text-muted);
+}
+
+.state-error {
+    color: var(--accent-error);
+}
+
+.state-empty {
+    color: var(--text-muted);
+}
+
+/* =============================================================================
+   Breadcrumbs
+   ============================================================================= */
+
+.breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+}
+
+.breadcrumb {
+    padding: var(--space-1) var(--space-2);
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
+.breadcrumb:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.breadcrumb-separator {
+    color: var(--text-disabled);
+}
+
+/* =============================================================================
    Utility Classes
    ============================================================================= */
 
