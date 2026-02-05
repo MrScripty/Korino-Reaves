@@ -24,13 +24,17 @@ if [[ -f "$ENV_FILE" ]]; then
     source "$ENV_FILE"
 fi
 
+SVELTE_PID_FILE="$SCRIPT_DIR/.svelte-dev.pid"
+
 usage() {
     echo "Usage: $0 <command> [args]"
     echo ""
     echo "Commands:"
     echo "  install          Install all dependencies (NuGet packages, npm modules)"
     echo "  build            Compile the project from source"
-    echo "  run              Build and launch the application in Godot"
+    echo "  run              Launch the application (starts Svelte dev server automatically)"
+    echo "  dev              Start only the Svelte dev server"
+    echo "  stop             Stop the Svelte dev server"
     echo "  set-godot <path> Set the path to the Godot binary or directory"
     echo ""
     echo "Examples:"
@@ -231,6 +235,87 @@ cmd_build() {
     log "Build complete."
 }
 
+is_svelte_running() {
+    if [[ -f "$SVELTE_PID_FILE" ]]; then
+        local pid
+        pid=$(cat "$SVELTE_PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+        # Stale PID file
+        rm -f "$SVELTE_PID_FILE"
+    fi
+    return 1
+}
+
+start_svelte_dev() {
+    if is_svelte_running; then
+        log "Svelte dev server already running (PID: $(cat "$SVELTE_PID_FILE"))"
+        return 0
+    fi
+
+    if ! check_node; then
+        error "Node.js required for Svelte dev server"
+        return 1
+    fi
+
+    if [[ ! -d "$SVELTE_UI/node_modules" ]]; then
+        log "Installing Svelte dependencies..."
+        (cd "$SVELTE_UI" && npm install --legacy-peer-deps)
+    fi
+
+    log "Starting Svelte dev server..."
+    (cd "$SVELTE_UI" && npm run dev > /dev/null 2>&1) &
+    local pid=$!
+    echo "$pid" > "$SVELTE_PID_FILE"
+
+    # Wait for server to be ready
+    local max_wait=30
+    local waited=0
+    while ! curl -s http://localhost:5173 > /dev/null 2>&1; do
+        sleep 0.5
+        waited=$((waited + 1))
+        if [[ $waited -ge $max_wait ]]; then
+            error "Svelte dev server failed to start"
+            kill "$pid" 2>/dev/null || true
+            rm -f "$SVELTE_PID_FILE"
+            return 1
+        fi
+    done
+
+    log "Svelte dev server started (PID: $pid) at http://localhost:5173"
+}
+
+stop_svelte_dev() {
+    if [[ -f "$SVELTE_PID_FILE" ]]; then
+        local pid
+        pid=$(cat "$SVELTE_PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            log "Stopping Svelte dev server (PID: $pid)..."
+            kill "$pid" 2>/dev/null || true
+            # Also kill any child processes (npm spawns node)
+            pkill -P "$pid" 2>/dev/null || true
+        fi
+        rm -f "$SVELTE_PID_FILE"
+        log "Svelte dev server stopped."
+    else
+        log "Svelte dev server is not running."
+    fi
+}
+
+cmd_dev() {
+    start_svelte_dev
+    log "Dev server running. Press Ctrl+C to stop."
+    # Wait for the dev server process
+    if [[ -f "$SVELTE_PID_FILE" ]]; then
+        wait "$(cat "$SVELTE_PID_FILE")" 2>/dev/null || true
+    fi
+}
+
+cmd_stop() {
+    stop_svelte_dev
+}
+
 cmd_run() {
     local godot_bin
     if ! godot_bin=$(find_godot); then
@@ -247,12 +332,23 @@ cmd_run() {
         warn "The app will launch but CEF features will be unavailable."
     fi
 
+    # Start Svelte dev server if not already running
+    start_svelte_dev || warn "Continuing without dev server (will use file:// fallback if available)"
+
     # CEF_PATH tells CEF where to find resource files (icudtl.dat, .pak, locales)
     export CEF_PATH="$CEF_BIN"
     log "CEF_PATH=$CEF_PATH"
 
     log "Launching with: $godot_bin"
-    exec "$godot_bin" --path "$GODOT_PROJECT"
+
+    # Run Godot and stop dev server when it exits
+    "$godot_bin" --path "$GODOT_PROJECT"
+    local exit_code=$?
+
+    log "Godot exited with code $exit_code"
+    stop_svelte_dev
+
+    exit $exit_code
 }
 
 if [[ $# -eq 0 ]]; then
@@ -277,6 +373,8 @@ while [[ $i -lt ${#args[@]} ]]; do
         install)   cmd_install ;;
         build)     cmd_build ;;
         run)       cmd_run ;;
+        dev)       cmd_dev ;;
+        stop)      cmd_stop ;;
         -h|--help|help) usage; exit 0 ;;
         *)
             error "Unknown command: ${args[$i]}"
