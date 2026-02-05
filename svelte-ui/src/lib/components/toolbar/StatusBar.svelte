@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
     import { asset } from '$lib/view-models/asset.svelte';
+    import { pak } from '$lib/view-models/pak.svelte';
     import { tree } from '$lib/view-models/tree.svelte';
 
     // Current status message (transient UI state)
@@ -21,7 +22,12 @@
 <div class="status-bar">
     <!-- Left side: Asset info -->
     <div class="status-left">
-        {#if asset.isLoading || tree.isLoading}
+        {#if pak.isExtracting}
+            <div class="status-item extracting">
+                <div class="loading-spinner small"></div>
+                <span>Extracting: {pak.currentFile} / {pak.totalFiles}</span>
+            </div>
+        {:else if asset.isLoading || tree.isLoading}
             <div class="status-item loading">
                 <div class="loading-spinner small"></div>
                 <span>Loading...</span>
@@ -93,6 +99,10 @@
     }
 
     .status-item.loading {
+        color: var(--accent-info);
+    }
+
+    .status-item.extracting {
         color: var(--accent-info);
     }
 

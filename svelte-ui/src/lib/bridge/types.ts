@@ -23,6 +23,8 @@ export type MessageType =
     | 'diff'       // Diff comparison results
     | 'viewport'   // 3D/2D viewport commands
     | 'agent'      // AI agent status and commands
+    | 'dialog'     // Native file dialogs (open, save)
+    | 'pak'        // PAK archive operations (extract, list)
     | 'error'      // Error responses
     | 'test';      // Testing/ping-pong messages
 

@@ -7,10 +7,13 @@
 <script lang="ts">
     import { ipc } from '$lib/bridge/ipc';
     import { asset } from '$lib/view-models/asset.svelte';
+    // Register dialog listeners for file picker responses
+    import '$lib/bridge/dialogListeners';
 
     interface MenuItem {
         label: string;
         action?: string;
+        type?: string; // IPC message type (defaults to 'asset')
         shortcut?: string;
         disabled?: boolean;
         separator?: boolean;
@@ -22,15 +25,15 @@
 
     const menus: Record<string, MenuItem[]> = {
         File: [
-            { label: 'Open...', action: 'file.open', shortcut: 'Ctrl+O' },
+            { label: 'Open...', type: 'dialog', action: 'showOpen', shortcut: 'Ctrl+O' },
             { label: 'Open Recent', submenu: [] },
             { separator: true, label: '' },
-            { label: 'Save', action: 'file.save', shortcut: 'Ctrl+S', disabled: !asset.hasAsset() },
-            { label: 'Save As...', action: 'file.saveAs', shortcut: 'Ctrl+Shift+S', disabled: !asset.hasAsset() },
+            { label: 'Save', type: 'asset', action: 'save', shortcut: 'Ctrl+S', disabled: !asset.hasAsset() },
+            { label: 'Save As...', type: 'dialog', action: 'showSave', shortcut: 'Ctrl+Shift+S', disabled: !asset.hasAsset() },
             { separator: true, label: '' },
-            { label: 'Export JSON...', action: 'file.exportJson', disabled: !asset.hasAsset() },
+            { label: 'Export JSON...', type: 'dialog', action: 'showExport', disabled: !asset.hasAsset() },
             { separator: true, label: '' },
-            { label: 'Close', action: 'file.close', disabled: !asset.hasAsset() },
+            { label: 'Close', type: 'asset', action: 'close', disabled: !asset.hasAsset() },
         ],
         Edit: [
             { label: 'Undo', action: 'edit.undo', shortcut: 'Ctrl+Z' },
@@ -67,7 +70,7 @@
 
         if (item.action) {
             ipc.send({
-                type: 'asset',
+                type: item.type ?? 'asset',
                 action: item.action,
                 payload: {},
             });

@@ -13,6 +13,7 @@
     import TreeToolbar from '$lib/components/tree/TreeToolbar.svelte';
     import PropertyGrid from '$lib/components/properties/PropertyGrid.svelte';
     import Tabs from '$lib/components/common/Tabs.svelte';
+    import ExtractPakDialog from '$lib/components/dialogs/ExtractPakDialog.svelte';
     import { LAYOUT } from '$lib/constants';
 
     // Bottom panel tabs
@@ -139,6 +140,9 @@
         <StatusBar />
     {/snippet}
 </AppShell>
+
+<!-- Global dialogs -->
+<ExtractPakDialog />
 
 <style>
     .main-content {
