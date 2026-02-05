@@ -65,10 +65,11 @@ class TreeVM {
     }
 
     expandAll(): void {
+        const ids = collectExpandableIds(this.nodes);
         ipc.send({
             type: 'tree',
             action: 'expandAll',
-            payload: {},
+            payload: { ids },
         });
     }
 
@@ -246,6 +247,22 @@ function mergeNodesIntoTree(
         }
         return node;
     });
+}
+
+/**
+ * Collect IDs of all nodes that have children (for expandAll).
+ */
+function collectExpandableIds(nodeList: TreeNode[]): string[] {
+    const ids: string[] = [];
+    for (const node of nodeList) {
+        if (node.hasChildren) {
+            ids.push(node.id);
+            if (node.children) {
+                ids.push(...collectExpandableIds(node.children));
+            }
+        }
+    }
+    return ids;
 }
 
 /**

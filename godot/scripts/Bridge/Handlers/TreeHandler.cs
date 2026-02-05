@@ -20,18 +20,21 @@ public sealed class TreeHandler : IMessageHandler
 {
     private readonly IAppLogger _logger;
     private readonly AssetManager _assetManager;
+    private readonly IpcDispatcher _dispatcher;
 
     public string MessageType => MessageTypes.Tree;
 
-    public TreeHandler(IAppLogger logger, AssetManager assetManager)
+    public TreeHandler(IAppLogger logger, AssetManager assetManager, IpcDispatcher dispatcher)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _assetManager = assetManager ?? throw new ArgumentNullException(nameof(assetManager));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
     }
 
     public bool CanHandle(string action)
     {
-        return action is "getRoot" or "getChildren" or "search" or "getPath";
+        return action is "getRoot" or "getChildren" or "search" or "getPath"
+            or "toggle" or "expand" or "collapse" or "expandAll" or "collapseAll";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
@@ -44,6 +47,11 @@ public sealed class TreeHandler : IMessageHandler
             "getChildren" => HandleGetChildren(message),
             "search" => HandleSearch(message),
             "getPath" => HandleGetPath(message),
+            "toggle" => HandleToggle(message),
+            "expand" => HandleExpand(message),
+            "collapse" => HandleCollapse(message),
+            "expandAll" => HandleExpandAll(message),
+            "collapseAll" => HandleCollapseAll(message),
             _ => Task.FromResult<IpcMessage?>(null),
         };
     }
@@ -155,6 +163,121 @@ public sealed class TreeHandler : IMessageHandler
 
         return Task.FromResult<IpcMessage?>(response);
     }
+
+    // -----------------------------------------------------------------
+    // Expand / Collapse handlers
+    // -----------------------------------------------------------------
+
+    private SelectionHandler? GetSelectionHandler()
+    {
+        return _dispatcher.GetHandler<SelectionHandler>();
+    }
+
+    private Task<IpcMessage?> HandleToggle(IpcMessage message)
+    {
+        var nodeId = ParseNodeId(message.Payload);
+        if (string.IsNullOrEmpty(nodeId))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in toggle request"));
+
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        var newState = sel.ToggleExpanded(nodeId);
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleExpand(IpcMessage message)
+    {
+        var nodeId = ParseNodeId(message.Payload);
+        if (string.IsNullOrEmpty(nodeId))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in expand request"));
+
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        var newState = sel.SetNodeExpanded(nodeId, true);
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleCollapse(IpcMessage message)
+    {
+        var nodeId = ParseNodeId(message.Payload);
+        if (string.IsNullOrEmpty(nodeId))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in collapse request"));
+
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        var newState = sel.SetNodeExpanded(nodeId, false);
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleExpandAll(IpcMessage message)
+    {
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        // Collect all expandable node IDs from the payload if provided,
+        // otherwise this is a no-op (frontend should send IDs).
+        string[]? ids = null;
+        if (message.Payload is JsonElement element &&
+            element.TryGetProperty("ids", out var idsProp) &&
+            idsProp.ValueKind == JsonValueKind.Array)
+        {
+            var list = new System.Collections.Generic.List<string>();
+            foreach (var item in idsProp.EnumerateArray())
+            {
+                var s = item.GetString();
+                if (s != null) list.Add(s);
+            }
+            ids = list.ToArray();
+        }
+
+        Models.SelectionState newState;
+        if (ids != null && ids.Length > 0)
+        {
+            newState = sel.ExpandIds(ids);
+        }
+        else
+        {
+            // No IDs provided - nothing to expand
+            newState = sel.CurrentState;
+        }
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleCollapseAll(IpcMessage message)
+    {
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        var newState = sel.CollapseAll();
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    // -----------------------------------------------------------------
+    // Utility methods
+    // -----------------------------------------------------------------
 
     private static string? ParseNodeId(object? payload)
     {

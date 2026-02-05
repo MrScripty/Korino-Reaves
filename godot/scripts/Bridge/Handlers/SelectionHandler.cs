@@ -3,6 +3,7 @@
 // Manages the current selection state and notifies when it changes.
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
@@ -94,17 +95,90 @@ public sealed class SelectionHandler : IMessageHandler
 
     private Task<IpcMessage?> HandleSetExpanded(IpcMessage message)
     {
-        // TODO: Update expanded IDs from payload
-        _logger.Info("Expanded state update requested (stub)");
+        string[]? ids = null;
 
-        var response = new IpcMessage(
+        if (message.Payload is System.Text.Json.JsonElement element &&
+            element.TryGetProperty("expandedIds", out var idsProp) &&
+            idsProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            var list = new System.Collections.Generic.List<string>();
+            foreach (var item in idsProp.EnumerateArray())
+            {
+                var s = item.GetString();
+                if (s != null) list.Add(s);
+            }
+            ids = list.ToArray();
+        }
+
+        if (ids != null)
+        {
+            _state = _state with { ExpandedIds = ids };
+            SelectionChanged?.Invoke(_state);
+        }
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
             MessageTypes.Selection,
-            "expandedUpdated",
+            "update",
             _state,
             message.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-        );
+        ));
+    }
 
-        return Task.FromResult<IpcMessage?>(response);
+    // -----------------------------------------------------------------
+    // Public API for other handlers (e.g. TreeHandler) to mutate state
+    // -----------------------------------------------------------------
+
+    /// <summary>
+    /// Toggles expansion of a single node.
+    /// </summary>
+    public SelectionState ToggleExpanded(string id)
+    {
+        var list = new System.Collections.Generic.List<string>(_state.ExpandedIds);
+        if (!list.Remove(id))
+            list.Add(id);
+
+        _state = _state with { ExpandedIds = list.ToArray() };
+        SelectionChanged?.Invoke(_state);
+        return _state;
+    }
+
+    /// <summary>
+    /// Sets a single node as expanded or collapsed.
+    /// </summary>
+    public SelectionState SetNodeExpanded(string id, bool expanded)
+    {
+        var list = new System.Collections.Generic.List<string>(_state.ExpandedIds);
+        if (expanded && !list.Contains(id))
+            list.Add(id);
+        else if (!expanded)
+            list.Remove(id);
+
+        _state = _state with { ExpandedIds = list.ToArray() };
+        SelectionChanged?.Invoke(_state);
+        return _state;
+    }
+
+    /// <summary>
+    /// Collapses all nodes.
+    /// </summary>
+    public SelectionState CollapseAll()
+    {
+        _state = _state with { ExpandedIds = Array.Empty<string>() };
+        SelectionChanged?.Invoke(_state);
+        return _state;
+    }
+
+    /// <summary>
+    /// Expands additional node IDs (union with existing).
+    /// </summary>
+    public SelectionState ExpandIds(string[] ids)
+    {
+        var set = new System.Collections.Generic.HashSet<string>(_state.ExpandedIds);
+        foreach (var id in ids) set.Add(id);
+
+        _state = _state with { ExpandedIds = set.ToArray() };
+        SelectionChanged?.Invoke(_state);
+        return _state;
     }
 }

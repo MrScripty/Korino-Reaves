@@ -84,7 +84,7 @@ public sealed class IpcDispatcher : IDisposable
     {
         RegisterHandler(new TestHandler(_logger));
         RegisterHandler(new AssetHandler(_logger, _assetManager));
-        RegisterHandler(new TreeHandler(_logger, _assetManager));
+        RegisterHandler(new TreeHandler(_logger, _assetManager, this));
         RegisterHandler(new PropertyHandler(_logger, _assetManager));
         RegisterHandler(new SelectionHandler(_logger));
         RegisterHandler(new DiffHandler(_logger, _assetManager));
