@@ -15,6 +15,8 @@ public static class MessageTypes
     public const string Diff = "diff";
     public const string Viewport = "viewport";
     public const string Agent = "agent";
+    public const string Dialog = "dialog";
+    public const string Pak = "pak";
     public const string Error = "error";
     public const string Test = "test";
 }

@@ -257,6 +257,7 @@ public partial class MainController : Node
 
         _dispatcher = new IpcDispatcher(_logger, _assetManager);
         _dispatcher.RegisterDefaultHandlers();
+        _dispatcher.RegisterDialogHandler(this);
         _dispatcher.Connect(_cefNode);
     }
 

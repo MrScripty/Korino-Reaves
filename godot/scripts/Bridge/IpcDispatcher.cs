@@ -88,6 +88,24 @@ public sealed class IpcDispatcher : IDisposable
         RegisterHandler(new PropertyHandler(_logger, _assetManager));
         RegisterHandler(new SelectionHandler(_logger));
         RegisterHandler(new DiffHandler(_logger, _assetManager));
+        RegisterHandler(new PakHandler(_logger, this));
+    }
+
+    /// <summary>
+    /// Registers the dialog handler which requires a scene root for showing native dialogs.
+    /// </summary>
+    /// <param name="sceneRoot">The scene root node to attach dialogs to</param>
+    public void RegisterDialogHandler(Node sceneRoot)
+    {
+        try
+        {
+            var handler = new DialogHandler(_logger, this, sceneRoot);
+            RegisterHandler(handler);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to register DialogHandler");
+        }
     }
 
     /// <summary>
