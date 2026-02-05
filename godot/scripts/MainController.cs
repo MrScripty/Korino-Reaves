@@ -1,23 +1,23 @@
 // Main Controller - Entry point for UAsset Viewer
 //
 // Manages application lifecycle:
-// - CEF initialization
+// - CEF initialization (via Rust GDExtension node)
 // - Browser creation
 // - IPC dispatcher setup
-// - Texture update loop
+// - Input forwarding
 
 using System;
 using Godot;
 using UAssetViewer.Assets;
 using UAssetViewer.Bridge;
-using UAssetViewer.Cef;
 using UAssetViewer.Infrastructure;
 
 namespace UAssetViewer;
 
 /// <summary>
 /// Main controller for the UAsset Viewer application.
-/// Manages CEF lifecycle and coordinates between browser and Godot.
+/// Manages CEF lifecycle via the Rust CefBrowserNode GDExtension and
+/// coordinates between browser and Godot.
 /// </summary>
 public partial class MainController : Node
 {
@@ -29,11 +29,10 @@ public partial class MainController : Node
 
     private IAppLogger _logger = null!;
     private AssetManager? _assetManager;
-    private CefBrowserWrapper? _browser;
+    private Node? _cefNode;
     private IpcDispatcher? _dispatcher;
     private TextureRect? _overlay;
-    private ImageTexture? _texture;
-    private Image? _image;
+    private bool _browserCreated;
 
     public override void _Ready()
     {
@@ -45,7 +44,7 @@ public partial class MainController : Node
             // Get UI overlay
             _overlay = GetNode<TextureRect>("UIOverlay");
 
-            // Initialize CEF
+            // Initialize CEF via GDExtension node
             InitializeCef();
 
             // Create browser
@@ -63,21 +62,9 @@ public partial class MainController : Node
         }
     }
 
-    public override void _Process(double delta)
-    {
-        // Pump CEF message loop
-        if (CefManager.Instance.IsInitialized)
-        {
-            CefManager.Instance.DoMessageLoopWork();
-        }
-
-        // Update texture if framebuffer changed
-        UpdateTexture();
-    }
-
     public override void _Input(InputEvent @event)
     {
-        if (_browser == null || !_browser.IsCreated)
+        if (_cefNode == null || !_browserCreated)
         {
             return;
         }
@@ -111,73 +98,158 @@ public partial class MainController : Node
     {
         _logger.Info("Initializing CEF...");
 
-        // Look for CEF helper in typical locations
-        string? helperPath = null;
+        // Instantiate the Rust GDExtension CefBrowserNode
+        _cefNode = ClassDB.Instantiate("CefBrowserNode").As<Node>();
+        _cefNode.Name = "CefBrowser";
+        AddChild(_cefNode);
+
+        // Find the CEF helper binary (Rust cef-helper-rs)
+        string helperPath = "";
         var possiblePaths = new[]
         {
-            "res://CefHelper",
-            "res://CefHelper.exe",
-            System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CefHelper"),
-            System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CefHelper.exe"),
+            System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cef-helper"),
+            System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "cef-helper-rs", "target", "release", "cef-helper"),
+            ProjectSettings.GlobalizePath("res://bin/cef-helper"),
         };
 
         foreach (var path in possiblePaths)
         {
-            var resolved = path.StartsWith("res://")
-                ? ProjectSettings.GlobalizePath(path)
-                : path;
-
-            if (System.IO.File.Exists(resolved))
+            if (System.IO.File.Exists(path))
             {
-                helperPath = resolved;
+                helperPath = path;
                 break;
             }
         }
 
-        CefManager.Instance.Initialize(helperPath);
+        // CEF_PATH env var for locating native CEF libs
+        var cefPath = System.Environment.GetEnvironmentVariable("CEF_PATH") ?? "";
+
+        var success = (bool)_cefNode.Call("initialize", helperPath, cefPath);
+        if (!success)
+        {
+            _logger.Error("Failed to initialize CEF via GDExtension");
+            GD.PrintErr("CEF initialization failed");
+        }
     }
 
     private void CreateBrowser()
     {
+        if (_cefNode == null)
+        {
+            return;
+        }
+
         _logger.Info("Creating browser...");
 
         var viewportSize = GetViewport().GetVisibleRect().Size;
         var width = (int)viewportSize.X;
         var height = (int)viewportSize.Y;
 
-        _browser = new CefBrowserWrapper(_logger);
+        // Check if Svelte dev server is running (preferred for development)
+        var devServerUrl = "http://localhost:5173";
+        bool useDevServer = false;
 
-        // Resolve UI path
-        var resolvedPath = UiPath;
-        if (resolvedPath.Contains("{UI_PATH}"))
+        _logger.Info("Checking for Svelte dev server at {Url}...", devServerUrl);
+        try
         {
-            var uiBasePath = ProjectSettings.GlobalizePath("res://ui");
-            if (!System.IO.Directory.Exists(uiBasePath))
+            using var client = new System.Net.Http.HttpClient();
+            client.Timeout = TimeSpan.FromMilliseconds(1000);
+            var response = client.GetAsync(devServerUrl).Result;
+            if (response.IsSuccessStatusCode)
             {
-                // Fallback to svelte-ui build output
-                uiBasePath = System.IO.Path.GetFullPath(
-                    System.IO.Path.Combine(
-                        AppDomain.CurrentDomain.BaseDirectory,
-                        "..",
-                        "svelte-ui",
-                        "build"
-                    )
-                );
+                useDevServer = true;
+                _logger.Info("Found Svelte dev server at {Url}", devServerUrl);
             }
-            resolvedPath = resolvedPath.Replace("{UI_PATH}", uiBasePath);
+            else
+            {
+                _logger.Warning("Dev server responded with status {Status}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Info("Dev server not available ({Message}), using file:// fallback", ex.InnerException?.Message ?? ex.Message);
         }
 
-        _logger.Info("Loading UI from: {Path}", resolvedPath);
-        _browser.Create(resolvedPath, width, height);
+        string resolvedPath;
+        if (useDevServer)
+        {
+            resolvedPath = devServerUrl;
+        }
+        else
+        {
+            // Fallback to file:// URL with built assets
+            resolvedPath = UiPath;
+            if (resolvedPath.Contains("{UI_PATH}"))
+            {
+                var uiBasePath = ProjectSettings.GlobalizePath("res://ui");
+                if (!System.IO.Directory.Exists(uiBasePath))
+                {
+                    // Fallback to svelte-ui build output
+                    uiBasePath = System.IO.Path.GetFullPath(
+                        System.IO.Path.Combine(
+                            AppDomain.CurrentDomain.BaseDirectory,
+                            "..",
+                            "svelte-ui",
+                            "dist"
+                        )
+                    );
+                }
+                resolvedPath = resolvedPath.Replace("{UI_PATH}", uiBasePath);
+            }
+            _logger.Info("Loading UI from: {Path}", resolvedPath);
+        }
 
-        // Create image and texture for display
-        _image = Image.CreateEmpty(width, height, false, Image.Format.Rgba8);
-        _texture = ImageTexture.CreateFromImage(_image);
-        _overlay!.Texture = _texture;
+        _browserCreated = (bool)_cefNode.Call("create_browser", resolvedPath, width, height);
+
+        if (_browserCreated)
+        {
+            // Apply BGRA→RGBA swizzle shader so we can pass CEF's BGRA
+            // bytes directly without CPU-side conversion.
+            var shader = GD.Load<Shader>("res://shaders/bgra_swizzle.gdshader");
+            _overlay!.Material = new ShaderMaterial { Shader = shader };
+
+            // Connect to framebuffer_updated signal — the texture is created
+            // on the first OnPaint callback in the Rust node, so we fetch it
+            // from the signal handler rather than immediately.
+            _cefNode.Connect("framebuffer_updated", Callable.From(OnFramebufferUpdated));
+        }
+        else
+        {
+            _logger.Error("Failed to create CEF browser");
+        }
+    }
+
+    private void OnFramebufferUpdated()
+    {
+        if (_cefNode == null || _overlay == null)
+        {
+            return;
+        }
+
+        // Fetch texture from Rust node and assign to overlay.
+        // On first call this sets the texture; on subsequent calls it updates
+        // the reference if the texture was recreated (e.g. after resize).
+        var tex = _cefNode.Call("get_texture").As<ImageTexture>();
+
+        GD.Print($"[MainController] OnFramebufferUpdated called: tex={tex?.GetInstanceId()}, current={_overlay.Texture?.GetInstanceId()}");
+
+        if (tex != null)
+        {
+            if (_overlay.Texture == null || _overlay.Texture.GetInstanceId() != tex.GetInstanceId())
+            {
+                GD.Print($"[MainController] Assigning texture to overlay: {tex.GetInstanceId()} ({tex.GetWidth()}x{tex.GetHeight()})");
+                _overlay.Texture = tex;
+            }
+        }
     }
 
     private void SetupDispatcher()
     {
+        if (_cefNode == null)
+        {
+            return;
+        }
+
         _logger.Info("Setting up IPC dispatcher...");
 
         // Create AssetManager for handling asset operations
@@ -185,72 +257,35 @@ public partial class MainController : Node
 
         _dispatcher = new IpcDispatcher(_logger, _assetManager);
         _dispatcher.RegisterDefaultHandlers();
-        _dispatcher.Connect(_browser!);
-    }
-
-    private void UpdateTexture()
-    {
-        if (_browser == null || _texture == null || _image == null)
-        {
-            return;
-        }
-
-        var capture = _browser.CaptureIfDirty();
-        if (capture == null)
-        {
-            return;
-        }
-
-        var (data, width, height) = capture.Value;
-
-        // Resize image if needed
-        if (_image.GetWidth() != width || _image.GetHeight() != height)
-        {
-            _image = Image.CreateEmpty(width, height, false, Image.Format.Rgba8);
-        }
-
-        // Convert BGRA to RGBA and copy to image
-        var rgbaData = ConvertBgraToRgba(data);
-        _image.SetData(width, height, false, Image.Format.Rgba8, rgbaData);
-        _texture.Update(_image);
-    }
-
-    private static byte[] ConvertBgraToRgba(byte[] bgra)
-    {
-        var rgba = new byte[bgra.Length];
-        for (int i = 0; i < bgra.Length; i += 4)
-        {
-            rgba[i] = bgra[i + 2];     // R
-            rgba[i + 1] = bgra[i + 1]; // G
-            rgba[i + 2] = bgra[i];     // B
-            rgba[i + 3] = bgra[i + 3]; // A
-        }
-        return rgba;
+        _dispatcher.Connect(_cefNode);
     }
 
     private void HandleMouseMotion(InputEventMouseMotion motion)
     {
         var pos = motion.Position;
-        _browser!.SendMouseMove((int)pos.X, (int)pos.Y);
+        _cefNode!.Call("send_mouse_move", (int)pos.X, (int)pos.Y);
     }
 
     private void HandleMouseButton(InputEventMouseButton button)
     {
         var pos = button.Position;
-        var cefButton = button.ButtonIndex switch
+
+        // Map Godot mouse button to CEF: 0=Left, 1=Middle, 2=Right
+        int cefButton = button.ButtonIndex switch
         {
-            MouseButton.Left => Xilium.CefGlue.CefMouseButtonType.Left,
-            MouseButton.Right => Xilium.CefGlue.CefMouseButtonType.Right,
-            MouseButton.Middle => Xilium.CefGlue.CefMouseButtonType.Middle,
-            _ => (Xilium.CefGlue.CefMouseButtonType?)null,
+            MouseButton.Left => 0,
+            MouseButton.Middle => 1,
+            MouseButton.Right => 2,
+            _ => -1,
         };
 
-        if (cefButton.HasValue)
+        if (cefButton >= 0)
         {
-            _browser!.SendMouseButton(
+            _cefNode!.Call(
+                "send_mouse_button",
                 (int)pos.X,
                 (int)pos.Y,
-                cefButton.Value,
+                cefButton,
                 button.Pressed,
                 button.DoubleClick ? 2 : 1
             );
@@ -259,51 +294,61 @@ public partial class MainController : Node
         // Handle scroll wheel
         if (button.ButtonIndex == MouseButton.WheelUp)
         {
-            _browser!.SendMouseWheel((int)pos.X, (int)pos.Y, 0, 120);
+            _cefNode!.Call("send_mouse_wheel", (int)pos.X, (int)pos.Y, 0, 120);
         }
         else if (button.ButtonIndex == MouseButton.WheelDown)
         {
-            _browser!.SendMouseWheel((int)pos.X, (int)pos.Y, 0, -120);
+            _cefNode!.Call("send_mouse_wheel", (int)pos.X, (int)pos.Y, 0, -120);
         }
     }
 
     private void HandleKey(InputEventKey key)
     {
-        var cefKey = new Xilium.CefGlue.CefKeyEvent
+        // Check for Ctrl+Shift+I to open DevTools
+        if (key.Pressed && key.Keycode == Key.I && key.CtrlPressed && key.ShiftPressed)
         {
-            EventType = key.Pressed
-                ? Xilium.CefGlue.CefKeyEventType.KeyDown
-                : Xilium.CefGlue.CefKeyEventType.KeyUp,
-            WindowsKeyCode = (int)key.Keycode,
-            NativeKeyCode = (int)key.PhysicalKeycode,
-            Modifiers = GetCefModifiers(key),
-        };
+            _logger.Info("Opening CEF DevTools...");
+            _cefNode!.Call("show_dev_tools");
+            GetViewport().SetInputAsHandled();
+            return;
+        }
 
-        _browser!.SendKeyEvent(cefKey);
+        // event_type: 0=KeyDown, 1=KeyUp, 2=Char
+        int eventType = key.Pressed ? 0 : 1;
+        int modifiers = GetModifierFlags(key);
+
+        _cefNode!.Call(
+            "send_key_event",
+            eventType,
+            (int)key.Keycode,
+            (int)key.PhysicalKeycode,
+            modifiers,
+            (int)key.Unicode
+        );
 
         // Send char event for printable characters
         if (key.Pressed && key.Unicode != 0)
         {
-            var charEvent = new Xilium.CefGlue.CefKeyEvent
-            {
-                EventType = Xilium.CefGlue.CefKeyEventType.Char,
-                Character = (char)key.Unicode,
-                UnmodifiedCharacter = (char)key.Unicode,
-                WindowsKeyCode = (int)key.Unicode,
-                Modifiers = GetCefModifiers(key),
-            };
-            _browser.SendKeyEvent(charEvent);
+            _cefNode.Call(
+                "send_key_event",
+                2, // Char
+                (int)key.Unicode,
+                (int)key.PhysicalKeycode,
+                modifiers,
+                (int)key.Unicode
+            );
         }
     }
 
-    private static Xilium.CefGlue.CefEventFlags GetCefModifiers(InputEventWithModifiers evt)
+    private static int GetModifierFlags(InputEventWithModifiers evt)
     {
-        var flags = Xilium.CefGlue.CefEventFlags.None;
+        int flags = 0;
 
-        if (evt.ShiftPressed) flags |= Xilium.CefGlue.CefEventFlags.ShiftDown;
-        if (evt.CtrlPressed) flags |= Xilium.CefGlue.CefEventFlags.ControlDown;
-        if (evt.AltPressed) flags |= Xilium.CefGlue.CefEventFlags.AltDown;
-        if (evt.MetaPressed) flags |= Xilium.CefGlue.CefEventFlags.CommandDown;
+        // CEF modifier flag values
+        if (evt.ShiftPressed) flags |= 1 << 1;   // EVENTFLAG_SHIFT_DOWN
+        if (evt.CtrlPressed) flags |= 1 << 2;     // EVENTFLAG_CONTROL_DOWN
+        if (evt.AltPressed) flags |= 1 << 3;      // EVENTFLAG_ALT_DOWN
+        if (evt.MetaPressed) flags |= 1 << 7;     // EVENTFLAG_COMMAND_DOWN
 
         return flags;
     }
@@ -313,8 +358,13 @@ public partial class MainController : Node
         _logger.Info("Cleaning up...");
 
         _dispatcher?.Dispose();
-        _browser?.Dispose();
-        CefManager.Instance.Dispose();
+
+        if (_cefNode != null)
+        {
+            _cefNode.Call("shutdown");
+            _cefNode.QueueFree();
+            _cefNode = null;
+        }
 
         _logger.Info("Cleanup complete");
     }
