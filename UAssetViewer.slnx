@@ -1,7 +1,4 @@
 <Solution>
-  <Folder Name="/cef-helper/">
-    <Project Path="cef-helper/CefHelper.csproj" />
-  </Folder>
   <Folder Name="/godot/">
     <Project Path="godot/UAssetViewer.csproj" />
   </Folder>

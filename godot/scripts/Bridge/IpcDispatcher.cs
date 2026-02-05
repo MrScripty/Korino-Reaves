@@ -1,14 +1,16 @@
 // IPC Dispatcher - Routes messages to appropriate handlers
 //
-// Central hub for IPC message routing. Receives messages from CEF
-// and dispatches to registered handlers based on message type.
+// Central hub for IPC message routing. Receives messages from the
+// Rust CefBrowserNode GDExtension via Godot signals and dispatches
+// to registered handlers based on message type.
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Godot;
 using UAssetViewer.Assets;
 using UAssetViewer.Bridge.Handlers;
-using UAssetViewer.Cef;
 using UAssetViewer.Diff;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
@@ -24,7 +26,7 @@ public sealed class IpcDispatcher : IDisposable
     private readonly Dictionary<string, IMessageHandler> _handlers = new();
     private readonly IAppLogger _logger;
     private readonly AssetManager _assetManager;
-    private CefBrowserWrapper? _browser;
+    private Node? _cefNode;
     private bool _disposed;
 
     public IpcDispatcher(IAppLogger logger, AssetManager assetManager)
@@ -39,21 +41,21 @@ public sealed class IpcDispatcher : IDisposable
     public AssetManager AssetManager => _assetManager;
 
     /// <summary>
-    /// Connects the dispatcher to a browser for bidirectional communication.
+    /// Connects the dispatcher to the Rust CefBrowserNode for bidirectional communication.
     /// </summary>
-    public void Connect(CefBrowserWrapper browser)
+    public void Connect(Node cefNode)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_browser != null)
+        if (_cefNode != null && GodotObject.IsInstanceValid(_cefNode))
         {
-            _browser.MessageReceived -= OnMessageReceived;
+            _cefNode.Disconnect("ipc_message_received", Callable.From<string>(OnIpcMessageReceived));
         }
 
-        _browser = browser ?? throw new ArgumentNullException(nameof(browser));
-        _browser.MessageReceived += OnMessageReceived;
+        _cefNode = cefNode ?? throw new ArgumentNullException(nameof(cefNode));
+        _cefNode.Connect("ipc_message_received", Callable.From<string>(OnIpcMessageReceived));
 
-        _logger.Info("IpcDispatcher connected to browser");
+        _logger.Info("IpcDispatcher connected to CefBrowserNode");
     }
 
     /// <summary>
@@ -143,20 +145,22 @@ public sealed class IpcDispatcher : IDisposable
     }
 
     /// <summary>
-    /// Sends a message to the frontend.
+    /// Sends a message to the frontend via the Rust CefBrowserNode.
     /// </summary>
     public void Send(IpcMessage message)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_browser == null)
+        if (_cefNode == null)
         {
-            _logger.Warning("Cannot send message - no browser connected");
+            _logger.Warning("Cannot send message - no CefBrowserNode connected");
             return;
         }
 
         _logger.Debug("Sending: type={Type}, action={Action}", message.Type, message.Action);
-        _browser.SendMessage(message);
+
+        var json = JsonSerializer.Serialize(message);
+        _cefNode.Call("send_ipc_message", json);
     }
 
     /// <summary>
@@ -184,12 +188,28 @@ public sealed class IpcDispatcher : IDisposable
     }
 
     /// <summary>
-    /// Handles incoming messages from the browser.
+    /// Handles incoming IPC messages from the Rust CefBrowserNode signal.
+    /// The json parameter is the raw JSON string from console.log interception.
     /// </summary>
-    private void OnMessageReceived(IpcMessage message)
+    private void OnIpcMessageReceived(string json)
     {
-        // Fire and forget - dispatch asynchronously
-        _ = DispatchAsync(message);
+        try
+        {
+            var message = JsonSerializer.Deserialize<IpcMessage>(json);
+            if (message != null)
+            {
+                // Fire and forget - dispatch asynchronously
+                _ = DispatchAsync(message);
+            }
+            else
+            {
+                _logger.Warning("Failed to deserialize IPC message: null result");
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger.Error(ex, "Failed to parse IPC message JSON: {Json}", json);
+        }
     }
 
     public void Dispose()
@@ -197,10 +217,13 @@ public sealed class IpcDispatcher : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        if (_browser != null)
+        if (_cefNode != null)
         {
-            _browser.MessageReceived -= OnMessageReceived;
-            _browser = null;
+            if (GodotObject.IsInstanceValid(_cefNode))
+            {
+                _cefNode.Disconnect("ipc_message_received", Callable.From<string>(OnIpcMessageReceived));
+            }
+            _cefNode = null;
         }
 
         _handlers.Clear();

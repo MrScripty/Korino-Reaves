@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.4.0">
+<Project Sdk="Godot.NET.Sdk/4.6.0">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>12.0</LangVersion>
@@ -19,11 +19,6 @@
   <!-- Exclude test files from main build -->
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
-  </ItemGroup>
-
-  <!-- CEF Integration -->
-  <ItemGroup>
-    <PackageReference Include="Another.Unofficial.Xilium.CefGlue" Version="0.4.0" />
   </ItemGroup>
 
   <!-- Logging & Telemetry -->

@@ -15,10 +15,14 @@
 # Godot build artifacts
 godot/.godot/
 
+# Rust build artifacts
+target/
+
 # Svelte build artifacts
 svelte-ui/dist/
 svelte-ui/.svelte-kit/
 svelte-ui/build/
+godot/ui/
 
 # =============================================================================
 # Dependencies

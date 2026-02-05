@@ -5,13 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOLUTION="$SCRIPT_DIR/UAssetViewer.slnx"
 GODOT_PROJECT="$SCRIPT_DIR/godot"
 SVELTE_UI="$SCRIPT_DIR/svelte-ui"
-CEF_HELPER="$SCRIPT_DIR/cef-helper"
-CEF_DIR="$SCRIPT_DIR/cef"
+CEF_GDEXT="$SCRIPT_DIR/cef-gdext"
+CEF_HELPER_RS="$SCRIPT_DIR/cef-helper-rs"
+CEF_BIN="$GODOT_PROJECT/bin"
 ENV_FILE="$SCRIPT_DIR/.launcher.env"
-
-CEF_VERSION="87.1.14+ga29e9a3+chromium-87.0.4280.141"
-CEF_TARBALL="cef_binary_${CEF_VERSION}_linux64_minimal.tar.bz2"
-CEF_URL="https://cef-builds.spotifycdn.com/${CEF_TARBALL}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,11 +32,9 @@ usage() {
     echo "  build            Compile the project from source"
     echo "  run              Build and launch the application in Godot"
     echo "  set-godot <path> Set the path to the Godot binary or directory"
-    echo "  setup-cef        Download and extract CEF native binaries for Linux"
     echo ""
     echo "Examples:"
     echo "  $0 set-godot /path/to/Godot_v4.6-stable_mono_linux_x86_64/"
-    echo "  $0 setup-cef"
     echo "  $0 install build run"
 }
 
@@ -58,6 +53,14 @@ check_node() {
     fi
     log "Using node: $(node --version)"
     return 0
+}
+
+check_rust() {
+    if ! command -v cargo &>/dev/null; then
+        error "Rust/cargo not found. Install from https://rustup.rs"
+        exit 1
+    fi
+    log "Using cargo: $(cargo --version)"
 }
 
 resolve_godot_binary() {
@@ -140,6 +143,7 @@ cmd_install() {
     log "Installing dependencies..."
 
     check_dotnet
+    check_rust
 
     # Restore NuGet packages for the full solution
     log "Restoring NuGet packages..."
@@ -162,84 +166,69 @@ cmd_build() {
     log "Building project from source..."
 
     check_dotnet
+    check_rust
 
-    # Build the full solution
+    # Build Rust GDExtension and helper binary
+    log "Building Rust CEF GDExtension..."
+    (cd "$CEF_GDEXT" && cargo build --release)
+    log "CEF GDExtension built."
+
+    log "Building Rust CEF helper binary..."
+    (cd "$CEF_HELPER_RS" && cargo build --release)
+    log "CEF helper built."
+
+    # Copy built artifacts to godot/bin/
+    mkdir -p "$CEF_BIN"
+    cp "$CEF_GDEXT/target/release/libcef_gdext.so" "$CEF_BIN/"
+    cp "$CEF_HELPER_RS/target/release/cef-helper" "$CEF_BIN/"
+    log "Copied GDExtension and helper to godot/bin/"
+
+    # Copy CEF 143 runtime files from crate build output
+    local cef_out
+    cef_out="$(find "$CEF_GDEXT/target/release/build" -path "*/cef-dll-sys-*/out/cef_linux_x86_64" -type d | head -1)"
+    if [[ -n "$cef_out" && -f "$cef_out/libcef.so" ]]; then
+        log "Copying CEF 143 runtime from: $cef_out"
+        cp -u "$cef_out"/libcef.so "$CEF_BIN/"
+        cp -u "$cef_out"/libEGL.so "$CEF_BIN/" 2>/dev/null || true
+        cp -u "$cef_out"/libGLESv2.so "$CEF_BIN/" 2>/dev/null || true
+        cp -u "$cef_out"/libvk_swiftshader.so "$CEF_BIN/" 2>/dev/null || true
+        cp -u "$cef_out"/libvulkan.so.1 "$CEF_BIN/" 2>/dev/null || true
+        cp -u "$cef_out"/chrome-sandbox "$CEF_BIN/" 2>/dev/null || true
+        cp -u "$cef_out"/vk_swiftshader_icd.json "$CEF_BIN/" 2>/dev/null || true
+        cp -u "$cef_out"/icudtl.dat "$CEF_BIN/"
+        cp -u "$cef_out"/v8_context_snapshot.bin "$CEF_BIN/"
+        cp -u "$cef_out"/*.pak "$CEF_BIN/"
+        cp -rn "$cef_out"/locales "$CEF_BIN/" 2>/dev/null || true
+        log "CEF runtime files copied to godot/bin/"
+    else
+        warn "CEF runtime files not found in build output — run 'cargo build --release' in cef-gdext first"
+    fi
+
+    # Build the .NET solution
     log "Building solution: $SOLUTION"
     dotnet build "$SOLUTION" --configuration Release
 
     # Build Svelte UI if Node.js is available
     if check_node; then
         if [[ -f "$SVELTE_UI/package.json" ]]; then
+            # Install dependencies if node_modules is missing
+            if [[ ! -d "$SVELTE_UI/node_modules" ]]; then
+                log "Installing Svelte UI dependencies..."
+                (cd "$SVELTE_UI" && npm install --legacy-peer-deps)
+            fi
+
             log "Building Svelte UI..."
             (cd "$SVELTE_UI" && npm run build)
-            log "Svelte UI built."
+
+            # Copy build output to godot/ui/ so res://ui resolves correctly
+            # (adapter-static outputs to svelte-ui/dist/)
+            rm -rf "$GODOT_PROJECT/ui"
+            cp -r "$SVELTE_UI/dist" "$GODOT_PROJECT/ui"
+            log "Svelte UI built and copied to godot/ui/"
         fi
     fi
 
     log "Build complete."
-}
-
-cmd_setup_cef() {
-    log "Setting up CEF native binaries (CEF $CEF_VERSION)..."
-
-    if [[ -f "$CEF_DIR/Release/libcef.so" && -f "$CEF_DIR/Release/icudtl.dat" ]]; then
-        log "CEF binaries already present at: $CEF_DIR/Release/"
-        return 0
-    fi
-
-    # Download and extract if libcef.so is not present
-    if [[ ! -f "$CEF_DIR/Release/libcef.so" ]]; then
-        if ! command -v curl &>/dev/null; then
-            error "curl is required for downloading CEF binaries"
-            exit 1
-        fi
-
-        mkdir -p "$CEF_DIR"
-
-        local tarball="$CEF_DIR/$CEF_TARBALL"
-
-        if [[ -f "$tarball" ]]; then
-            log "Using cached download: $tarball"
-        else
-            log "Downloading CEF binaries (~260 MB)..."
-            log "URL: $CEF_URL"
-            curl -L --progress-bar -o "$tarball" "$CEF_URL"
-        fi
-
-        log "Extracting CEF binaries..."
-        tar -xjf "$tarball" -C "$CEF_DIR" --strip-components=1
-
-        if [[ -f "$CEF_DIR/Release/libcef.so" ]]; then
-            log "CEF binaries extracted to: $CEF_DIR/Release/"
-            log "You can delete the tarball to save space:"
-            log "  rm \"$tarball\""
-        else
-            error "Extraction failed - libcef.so not found in $CEF_DIR/Release/"
-            exit 1
-        fi
-    fi
-
-    # CEF native code looks for icudtl.dat and .pak files relative to libcef.so,
-    # but the distribution puts them in Resources/. Symlink them into Release/.
-    if [[ -d "$CEF_DIR/Resources" ]]; then
-        log "Symlinking CEF resource files into Release/..."
-        for f in "$CEF_DIR/Resources"/*.dat "$CEF_DIR/Resources"/*.pak "$CEF_DIR/Resources"/*.bin; do
-            [[ -f "$f" ]] || continue
-            local name
-            name="$(basename "$f")"
-            if [[ ! -e "$CEF_DIR/Release/$name" ]]; then
-                ln -sf "$f" "$CEF_DIR/Release/$name"
-                log "  Linked: $name"
-            fi
-        done
-        # Symlink locales directory
-        if [[ -d "$CEF_DIR/Resources/locales" && ! -e "$CEF_DIR/Release/locales" ]]; then
-            ln -sf "$CEF_DIR/Resources/locales" "$CEF_DIR/Release/locales"
-            log "  Linked: locales/"
-        fi
-    fi
-
-    log "CEF setup complete."
 }
 
 cmd_run() {
@@ -250,31 +239,17 @@ cmd_run() {
         exit 1
     fi
 
-    # Set CEF_PATH if native binaries are present
-    if [[ -d "$CEF_DIR/Release" && -f "$CEF_DIR/Release/libcef.so" ]]; then
-        export CEF_PATH="$CEF_DIR/Release"
-        log "CEF_PATH=$CEF_PATH"
-    elif [[ -z "${CEF_PATH:-}" ]]; then
-        warn "CEF binaries not found. Run '$0 setup-cef' to download them."
+    # CEF runtime must be in godot/bin/ (copied during build).
+    # libcef_gdext.so and cef-helper both use RUNPATH=$ORIGIN to find
+    # libcef.so in the same directory, so LD_LIBRARY_PATH is not needed.
+    if [[ ! -f "$CEF_BIN/libcef.so" ]]; then
+        warn "CEF runtime not found in godot/bin/. Run '$0 build' first."
         warn "The app will launch but CEF features will be unavailable."
     fi
 
-    # Add CEF Release dir to library path so libcef.so is found
-    if [[ -n "${CEF_PATH:-}" ]]; then
-        export LD_LIBRARY_PATH="${CEF_PATH}:${LD_LIBRARY_PATH:-}"
-    fi
-
-    # Set CEF helper binary path
-    local helper_bin="$CEF_HELPER/bin/Release/net8.0/CefHelper"
-    if [[ ! -f "$helper_bin" ]]; then
-        helper_bin="$CEF_HELPER/bin/Debug/net8.0/CefHelper"
-    fi
-    if [[ -f "$helper_bin" ]]; then
-        export CEF_HELPER_PATH="$helper_bin"
-        log "CEF_HELPER_PATH=$CEF_HELPER_PATH"
-    else
-        warn "CefHelper binary not found. Run '$0 build' first."
-    fi
+    # CEF_PATH tells CEF where to find resource files (icudtl.dat, .pak, locales)
+    export CEF_PATH="$CEF_BIN"
+    log "CEF_PATH=$CEF_PATH"
 
     log "Launching with: $godot_bin"
     exec "$godot_bin" --path "$GODOT_PROJECT"
@@ -302,7 +277,6 @@ while [[ $i -lt ${#args[@]} ]]; do
         install)   cmd_install ;;
         build)     cmd_build ;;
         run)       cmd_run ;;
-        setup-cef) cmd_setup_cef ;;
         -h|--help|help) usage; exit 0 ;;
         *)
             error "Unknown command: ${args[$i]}"
