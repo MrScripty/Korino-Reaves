@@ -1,3 +1,7 @@
+Korino-Reaves is a fully rebuilt fork of UAssetGUI. It introduces cross platform compatibility, an entirly new and modern GUI, performance improvments, integrated asset 3D/2D viewer, and will be introducing an fully local AI agent and mod migration tools to make understanding, creating, and maintaining mods for the UnrealEngine 4+ faster and easier.
+
+Below is the original UAssetGUI README:
+
 # UAssetGUI
 [![Release](https://img.shields.io/github/v/release/atenfyr/UAssetGUI.svg?style=flat-square)](https://github.com/atenfyr/UAssetGUI/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/atenfyr/UAssetGUI/total.svg?style=flat-square)](https://github.com/atenfyr/UAssetGUI/releases)
@@ -99,3 +103,4 @@ If you have an Unreal Engine .uasset file that displays "failed to maintain bina
 
 ## License
 UAssetAPI and UAssetGUI are distributed under the MIT license, which you can view in detail in the [LICENSE file](LICENSE).
+
