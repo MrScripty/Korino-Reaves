@@ -1,7 +1,7 @@
 <!--
-    Extract PAK Dialog
+    Import PAK Dialog
 
-    Modal dialog for entering a project name before extracting a PAK file.
+    Modal dialog for entering a project name before importing a PAK file.
     Validates the name and shows preview of output path.
 -->
 <script lang="ts">
@@ -39,9 +39,9 @@
         }, 300);
     }
 
-    function handleExtract() {
+    function handleImport() {
         if (!projectName || pak.projectNameError) return;
-        pak.startExtraction(projectName);
+        pak.startImport(projectName);
         projectName = '';
     }
 
@@ -52,7 +52,7 @@
 
     function handleKeyDown(event: KeyboardEvent) {
         if (event.key === 'Enter' && projectName && !pak.projectNameError) {
-            handleExtract();
+            handleImport();
         }
     }
 
@@ -64,7 +64,7 @@
 </script>
 
 <Modal
-    title="Extract PAK Archive"
+    title="Import PAK Archive"
     open={pak.showDialog}
     onClose={handleClose}
     width="500px"
@@ -111,10 +111,10 @@
         </button>
         <button
             class="btn btn-primary"
-            onclick={handleExtract}
+            onclick={handleImport}
             disabled={!projectName || !!pak.projectNameError || pak.isValidating}
         >
-            {pak.isValidating ? 'Checking...' : 'Extract'}
+            {pak.isValidating ? 'Checking...' : 'Import'}
         </button>
     {/snippet}
 </Modal>
