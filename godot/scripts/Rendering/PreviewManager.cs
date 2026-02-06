@@ -46,7 +46,7 @@ public sealed class PreviewManager : IDisposable
     private MeshInstance3D? _meshInstance;
     private DirectionalLight3D? _light;
     private Node? _parentNode;
-    private bool _pendingCapture;
+    private int _captureCountdown;
 
     // Orbital camera state
     private float _cameraDistance = 3f;
@@ -103,11 +103,14 @@ public sealed class PreviewManager : IDisposable
         {
             Size = new Vector2I(ViewportWidth, ViewportHeight),
             RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled,
-            TransparentBg = true,
+            TransparentBg = false,
             OwnWorld3D = true,
         };
 
-        _camera = new Camera3D();
+        _camera = new Camera3D
+        {
+            Far = 1000000f, // UE4 uses centimeters — meshes can be very large
+        };
 
         _light = new DirectionalLight3D
         {
@@ -368,6 +371,8 @@ public sealed class PreviewManager : IDisposable
             Roughness = 0.6f,
             Metallic = 0.1f,
         };
+
+        _logger.Info("ArrayMesh surfaces={SurfaceCount}", arrayMesh.GetSurfaceCount());
         for (int i = 0; i < arrayMesh.GetSurfaceCount(); i++)
         {
             arrayMesh.SurfaceSetMaterial(i, material);
@@ -375,18 +380,18 @@ public sealed class PreviewManager : IDisposable
 
         // Auto-frame the mesh
         FrameMesh(arrayMesh);
+        _logger.Info("Camera: pos={Pos}, target={Target}, distance={Dist}",
+            _camera.Position, _cameraTarget, _cameraDistance);
 
-        // Request a render and capture the frame
-        // We need to wait for the next rendered frame
+        // Request a single render frame from the SubViewport
         _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
 
-        // Store info for the capture callback
-        _pendingCapture = true;
+        // Store info for the capture callback and wait 2 frames:
+        // Frame 0: SubViewport renders the mesh
+        // Frame 1: Capture the rendered result
         _pendingAssetName = assetName;
         _pendingMeshInfo = meshInfo;
-
-        // Schedule capture after render completes (use deferred call)
-        _subViewport.CallDeferred("_notify_capture_ready");
+        _captureCountdown = 2;
     }
 
     private string? _pendingAssetName;
@@ -397,10 +402,13 @@ public sealed class PreviewManager : IDisposable
     /// </summary>
     public void ProcessFrame()
     {
-        if (!_pendingCapture || _subViewport == null) return;
-        _pendingCapture = false;
+        if (_captureCountdown <= 0 || _subViewport == null) return;
 
-        CaptureAndSendMeshFrame(_pendingAssetName ?? "Unknown", _pendingMeshInfo);
+        _captureCountdown--;
+        if (_captureCountdown == 0)
+        {
+            CaptureAndSendMeshFrame(_pendingAssetName ?? "Unknown", _pendingMeshInfo);
+        }
     }
 
     private void CaptureAndSendMeshFrame(string assetName, MeshInfo? meshInfo)
@@ -427,6 +435,9 @@ public sealed class PreviewManager : IDisposable
         var base64 = Convert.ToBase64String(pngBytes);
         var dataUrl = $"data:image/png;base64,{base64}";
 
+        _logger.Info("Captured mesh frame: {W}x{H}, PNG={PngSize} bytes, base64={B64Len} chars",
+            image.GetWidth(), image.GetHeight(), pngBytes.Length, base64.Length);
+
         _dispatcher.Send(MessageTypes.Viewport, "preview", new
         {
             imageData = dataUrl,
@@ -449,6 +460,8 @@ public sealed class PreviewManager : IDisposable
     private void FrameMesh(ArrayMesh mesh)
     {
         var aabb = mesh.GetAabb();
+        _logger.Info("Mesh AABB: center={Center}, size={Size}, length={Len}",
+            aabb.GetCenter(), aabb.Size, aabb.Size.Length());
         _cameraTarget = aabb.GetCenter();
         _cameraDistance = aabb.Size.Length() * 1.5f;
         if (_cameraDistance < 0.5f) _cameraDistance = 3f;
@@ -523,7 +536,7 @@ public sealed class PreviewManager : IDisposable
         if (_subViewport == null || _meshInstance?.Mesh == null) return;
 
         _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
-        _pendingCapture = true;
+        _captureCountdown = 2;
         // pendingAssetName/pendingMeshInfo remain from the last render
     }
 

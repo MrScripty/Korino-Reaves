@@ -391,7 +391,13 @@ public sealed class MeshExtractor
             }
         }
 
-        // Build index array
+        // Reverse triangle winding: UE4→Godot coordinate transform (X, Z, -Y)
+        // flips handedness, so winding must be reversed to avoid back-face culling.
+        for (int i = 0; i < indexList.Count; i += 3)
+        {
+            (indexList[i + 1], indexList[i + 2]) = (indexList[i + 2], indexList[i + 1]);
+        }
+
         var indexArray = indexList.ToArray();
 
         // Create Godot surface array
@@ -479,6 +485,12 @@ public sealed class MeshExtractor
             {
                 uvArray[i] = new Vector2(vert.UV.U, vert.UV.V);
             }
+        }
+
+        // Reverse triangle winding (same as static mesh — handedness flip)
+        for (int i = 0; i < indexList.Count; i += 3)
+        {
+            (indexList[i + 1], indexList[i + 2]) = (indexList[i + 2], indexList[i + 1]);
         }
 
         var arrays = new Godot.Collections.Array();
