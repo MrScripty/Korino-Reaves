@@ -90,11 +90,19 @@ public sealed class MeshExtractor
 
         try
         {
+            // Log mesh properties for debugging
+            _logger.Debug("Static mesh {Name}: RenderData={HasRenderData}, LODs(raw)={LodCount}",
+                mesh.Name,
+                mesh.RenderData != null,
+                mesh.RenderData?.LODs?.Length ?? 0);
+
             // Convert to exportable format
             var exported = await Task.Run(() =>
             {
-                mesh.TryConvert(out var converted);
-                return converted;
+                var success = mesh.TryConvert(out var converted);
+                _logger.Debug("TryConvert result: success={Success}, converted={HasConverted}, LODs={LodCount}",
+                    success, converted != null, converted?.LODs?.Count ?? 0);
+                return success ? converted : null;
             });
 
             if (exported == null)
@@ -104,9 +112,15 @@ public sealed class MeshExtractor
             }
 
             // Get LOD data
+            if (exported.LODs.Count == 0)
+            {
+                _logger.Warning("Static mesh has no LODs after conversion: {Name}", mesh.Name);
+                return null;
+            }
+
             if (lodIndex >= exported.LODs.Count)
             {
-                _logger.Warning("LOD {Index} not available, using LOD 0", lodIndex);
+                _logger.Warning("LOD {Index} not available (count={Count}), using LOD 0", lodIndex, exported.LODs.Count);
                 lodIndex = 0;
             }
 
@@ -182,9 +196,15 @@ public sealed class MeshExtractor
             }
 
             // Get LOD data
+            if (exported.LODs.Count == 0)
+            {
+                _logger.Warning("Skeletal mesh has no LODs: {Name}", mesh.Name);
+                return null;
+            }
+
             if (lodIndex >= exported.LODs.Count)
             {
-                _logger.Warning("LOD {Index} not available, using LOD 0", lodIndex);
+                _logger.Warning("LOD {Index} not available (count={Count}), using LOD 0", lodIndex, exported.LODs.Count);
                 lodIndex = 0;
             }
 

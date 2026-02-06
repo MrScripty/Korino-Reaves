@@ -13,6 +13,7 @@
     import TreeToolbar from '$lib/components/tree/TreeToolbar.svelte';
     import PropertyGrid from '$lib/components/properties/PropertyGrid.svelte';
     import Tabs from '$lib/components/common/Tabs.svelte';
+    import ViewportPreview from '$lib/components/viewport/ViewportPreview.svelte';
     import ImportPakDialog from '$lib/components/dialogs/ImportPakDialog.svelte';
     import FileBrowser from '$lib/components/dialogs/FileBrowser.svelte';
     import { fileBrowser } from '$lib/view-models/fileBrowser.svelte';
@@ -73,14 +74,7 @@
                 <div class="viewport-area">
                     <!-- 3D/2D Viewport -->
                     <div class="viewport">
-                        <div class="viewport-placeholder">
-                            <div class="viewport-text">
-                                <span class="text-muted">3D/2D Viewport</span>
-                                <span class="text-xs text-muted">
-                                    Select a mesh or texture to preview
-                                </span>
-                            </div>
-                        </div>
+                        <ViewportPreview />
                     </div>
 
                     <!-- Bottom panel: Hex/Data/Log -->
@@ -152,6 +146,7 @@
     filters={fileBrowser.filters}
     initialPath={fileBrowser.initialPath}
     basePath={fileBrowser.basePath}
+    selectOnClick={fileBrowser.selectOnClick}
     onSelect={(path) => fileBrowser.handleSelect(path)}
     onCancel={() => fileBrowser.handleCancel()}
 />
@@ -198,21 +193,6 @@
         background: var(--bg-primary);
         position: relative;
         overflow: hidden;
-    }
-
-    .viewport-placeholder {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .viewport-text {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-2);
     }
 
     .bottom-panel {

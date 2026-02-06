@@ -464,6 +464,24 @@ export interface ViewportState {
     wireframe: boolean;
 }
 
+/**
+ * Payload sent from C# when an asset preview is ready.
+ */
+export interface ViewportPreviewPayload {
+    /** Base64 PNG data URL (data:image/png;base64,...) */
+    imageData: string;
+    /** Preview mode */
+    mode: '2d' | '3d';
+    /** Type of content being previewed */
+    contentType: 'texture' | 'mesh';
+    /** Display name of the asset */
+    assetName: string;
+    /** Texture-specific metadata */
+    textureInfo?: { width: number; height: number; format: string };
+    /** Mesh-specific metadata */
+    meshInfo?: { vertexCount: number; triangleCount: number; lodCount: number };
+}
+
 // =============================================================================
 // Utility Types
 // =============================================================================

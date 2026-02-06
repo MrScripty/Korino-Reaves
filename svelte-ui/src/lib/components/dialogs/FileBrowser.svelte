@@ -23,6 +23,7 @@
         filters?: string[]; // e.g., ['*.pak', '*.uasset']
         initialPath?: string;
         basePath?: string; // Root path for relative display (hides prefix)
+        selectOnClick?: boolean; // If true, clicking a directory immediately selects it
         onSelect: (path: string) => void;
         onCancel: () => void;
     }
@@ -34,6 +35,7 @@
         filters = [],
         initialPath = '',
         basePath = '',
+        selectOnClick = false,
         onSelect,
         onCancel,
     }: Props = $props();
@@ -192,6 +194,11 @@
 
     function handleEntryClick(entry: FileEntry) {
         if (entry.isDirectory) {
+            if (selectOnClick && mode === 'directory') {
+                // Immediately select the directory (e.g., project picker)
+                onSelect(entry.path);
+                return;
+            }
             if (mode === 'directory') {
                 // In directory mode, single-click selects a folder
                 selectedEntry = selectedEntry?.path === entry.path ? null : entry;

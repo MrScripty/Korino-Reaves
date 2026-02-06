@@ -42,6 +42,11 @@ public sealed class ProjectHandler : IMessageHandler
     private readonly IpcDispatcher _dispatcher;
     private ProjectInfo? _currentProject;
 
+    /// <summary>
+    /// Gets the currently open project, or null if no project is open.
+    /// </summary>
+    public ProjectInfo? CurrentProject => _currentProject;
+
     public string MessageType => MessageTypes.Project;
 
     public ProjectHandler(IAppLogger logger, IpcDispatcher dispatcher)

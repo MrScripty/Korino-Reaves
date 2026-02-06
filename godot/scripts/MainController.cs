@@ -10,7 +10,9 @@ using System;
 using Godot;
 using UAssetViewer.Assets;
 using UAssetViewer.Bridge;
+using UAssetViewer.Bridge.Handlers;
 using UAssetViewer.Infrastructure;
+using UAssetViewer.Rendering;
 
 namespace UAssetViewer;
 
@@ -31,6 +33,7 @@ public partial class MainController : Node
     private AssetManager? _assetManager;
     private Node? _cefNode;
     private IpcDispatcher? _dispatcher;
+    private PreviewManager? _previewManager;
     private TextureRect? _overlay;
     private bool _browserCreated;
 
@@ -84,6 +87,11 @@ public partial class MainController : Node
                 HandleKey(key);
                 break;
         }
+    }
+
+    public override void _Process(double delta)
+    {
+        _previewManager?.ProcessFrame();
     }
 
     public override void _Notification(int what)
@@ -258,6 +266,12 @@ public partial class MainController : Node
         _dispatcher = new IpcDispatcher(_logger, _assetManager);
         _dispatcher.RegisterDefaultHandlers();
         _dispatcher.RegisterDialogHandler(this);
+
+        // Create preview manager and viewport handler (depends on dispatcher having handlers)
+        _previewManager = new PreviewManager(_logger, _dispatcher);
+        _previewManager.Initialize(this);
+        _dispatcher.RegisterHandler(new ViewportHandler(_logger, _previewManager));
+
         _dispatcher.Connect(_cefNode);
     }
 
@@ -358,6 +372,7 @@ public partial class MainController : Node
     {
         _logger.Info("Cleaning up...");
 
+        _previewManager?.Dispose();
         _dispatcher?.Dispose();
 
         if (_cefNode != null)

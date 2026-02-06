@@ -15,6 +15,7 @@ interface FileBrowserConfig {
     filters: string[];
     initialPath?: string;
     basePath?: string; // Root path for relative display
+    selectOnClick?: boolean; // If true, clicking a directory immediately selects it
     onSelect: (path: string) => void;
 }
 
@@ -28,6 +29,7 @@ class FileBrowserVM {
     filters = $state<string[]>([]);
     initialPath = $state<string>('');
     basePath = $state<string>('');
+    selectOnClick = $state(false);
 
     // Cached projects directory path
     private _projectsDir: string | null = null;
@@ -44,6 +46,7 @@ class FileBrowserVM {
         this.filters = config.filters;
         this.initialPath = config.initialPath ?? '';
         this.basePath = config.basePath ?? '';
+        this.selectOnClick = config.selectOnClick ?? false;
         this._onSelect = config.onSelect;
         this.isOpen = true;
     }
@@ -109,6 +112,7 @@ class FileBrowserVM {
             filters: [],
             initialPath: projectsDir,
             basePath: projectsDir,
+            selectOnClick: true,
             onSelect,
         });
     }
