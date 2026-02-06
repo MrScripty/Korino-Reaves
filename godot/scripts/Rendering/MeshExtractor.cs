@@ -33,6 +33,15 @@ public sealed record MeshInfo(
 );
 
 /// <summary>
+/// Result of mesh extraction containing both the Godot mesh and section metadata
+/// needed for material assignment.
+/// </summary>
+public sealed record MeshExtractionResult(
+    ArrayMesh Mesh,
+    CMeshSection[] Sections
+);
+
+/// <summary>
 /// Extracts meshes from UE assets and converts to Godot ArrayMesh.
 /// </summary>
 public sealed class MeshExtractor
@@ -49,7 +58,7 @@ public sealed class MeshExtractor
     /// <summary>
     /// Extracts a static mesh from a PAK file and converts to Godot ArrayMesh.
     /// </summary>
-    public async Task<ArrayMesh?> ExtractStaticMeshFromPakAsync(
+    public async Task<MeshExtractionResult?> ExtractStaticMeshFromPakAsync(
         DefaultFileProvider provider,
         string assetPath,
         int lodIndex = 0)
@@ -82,8 +91,9 @@ public sealed class MeshExtractor
 
     /// <summary>
     /// Extracts a Godot ArrayMesh from a CUE4Parse UStaticMesh.
+    /// Returns the mesh along with section metadata for material extraction.
     /// </summary>
-    public async Task<ArrayMesh?> ExtractStaticMeshAsync(UStaticMesh mesh, int lodIndex = 0)
+    public async Task<MeshExtractionResult?> ExtractStaticMeshAsync(UStaticMesh mesh, int lodIndex = 0)
     {
         using var activity = ActivitySource.StartActivity("ExtractStaticMesh");
         activity?.SetTag("mesh.name", mesh.Name);
@@ -125,10 +135,11 @@ public sealed class MeshExtractor
             }
 
             var lod = exported.LODs[lodIndex];
+            var sections = lod.Sections?.Value ?? Array.Empty<CMeshSection>();
             var arrayMesh = BuildArrayMesh(lod, mesh.Name);
 
             activity?.SetStatus(ActivityStatusCode.Ok);
-            return arrayMesh;
+            return new MeshExtractionResult(arrayMesh, sections);
         }
         catch (Exception ex)
         {
@@ -142,7 +153,7 @@ public sealed class MeshExtractor
     /// Extracts a skeletal mesh from a PAK file and converts to Godot ArrayMesh.
     /// Note: This extracts geometry only, not skeleton/animation data.
     /// </summary>
-    public async Task<ArrayMesh?> ExtractSkeletalMeshFromPakAsync(
+    public async Task<MeshExtractionResult?> ExtractSkeletalMeshFromPakAsync(
         DefaultFileProvider provider,
         string assetPath,
         int lodIndex = 0)
@@ -174,8 +185,9 @@ public sealed class MeshExtractor
 
     /// <summary>
     /// Extracts a Godot ArrayMesh from a CUE4Parse USkeletalMesh.
+    /// Returns the mesh along with section metadata for material extraction.
     /// </summary>
-    public async Task<ArrayMesh?> ExtractSkeletalMeshAsync(USkeletalMesh mesh, int lodIndex = 0)
+    public async Task<MeshExtractionResult?> ExtractSkeletalMeshAsync(USkeletalMesh mesh, int lodIndex = 0)
     {
         using var activity = ActivitySource.StartActivity("ExtractSkeletalMesh");
         activity?.SetTag("mesh.name", mesh.Name);
@@ -209,10 +221,11 @@ public sealed class MeshExtractor
             }
 
             var lod = exported.LODs[lodIndex];
+            var sections = lod.Sections?.Value ?? Array.Empty<CMeshSection>();
             var arrayMesh = BuildArrayMeshFromSkeletal(lod, mesh.Name);
 
             activity?.SetStatus(ActivityStatusCode.Ok);
-            return arrayMesh;
+            return new MeshExtractionResult(arrayMesh, sections);
         }
         catch (Exception ex)
         {

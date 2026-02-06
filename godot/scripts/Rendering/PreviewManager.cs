@@ -35,6 +35,7 @@ public sealed class PreviewManager : IDisposable
     private readonly IpcDispatcher _dispatcher;
     private readonly TextureExtractor _textureExtractor;
     private readonly MeshExtractor _meshExtractor;
+    private readonly MaterialExtractor _materialExtractor;
 
     private DefaultFileProvider? _fileProvider;
     private string? _projectPath;
@@ -65,6 +66,7 @@ public sealed class PreviewManager : IDisposable
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _textureExtractor = new TextureExtractor(logger);
         _meshExtractor = new MeshExtractor(logger);
+        _materialExtractor = new MaterialExtractor(logger, _textureExtractor);
     }
 
     /// <summary>
@@ -330,52 +332,92 @@ public sealed class PreviewManager : IDisposable
     {
         _logger.Info("Previewing static mesh: {Name}", assetName);
 
-        var arrayMesh = await _meshExtractor.ExtractStaticMeshAsync(mesh);
-        if (arrayMesh == null)
+        var result = await _meshExtractor.ExtractStaticMeshAsync(mesh);
+        if (result == null)
         {
             _logger.Warning("Failed to extract static mesh: {Name}", assetName);
             _dispatcher.Send(MessageTypes.Viewport, "loading", new { loading = false });
             return;
         }
 
+        // Extract materials for each surface
+        ExtractedMaterial?[]? materials = null;
+        if (result.Sections.Length > 0)
+        {
+            try
+            {
+                materials = await _materialExtractor.ExtractMaterialsAsync(result.Sections, _fileProvider);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Material extraction failed, using defaults: {Error}", ex.Message);
+            }
+        }
+
         var meshInfo = _meshExtractor.GetStaticMeshInfo(mesh);
-        RenderMeshAndSend(arrayMesh, assetName, meshInfo);
+        RenderMeshAndSend(result.Mesh, assetName, meshInfo, materials);
     }
 
     private async Task PreviewSkeletalMeshAsync(USkeletalMesh mesh, string assetName)
     {
         _logger.Info("Previewing skeletal mesh: {Name}", assetName);
 
-        var arrayMesh = await _meshExtractor.ExtractSkeletalMeshAsync(mesh);
-        if (arrayMesh == null)
+        var result = await _meshExtractor.ExtractSkeletalMeshAsync(mesh);
+        if (result == null)
         {
             _logger.Warning("Failed to extract skeletal mesh: {Name}", assetName);
             _dispatcher.Send(MessageTypes.Viewport, "loading", new { loading = false });
             return;
         }
 
-        RenderMeshAndSend(arrayMesh, assetName, null);
+        ExtractedMaterial?[]? materials = null;
+        if (result.Sections.Length > 0)
+        {
+            try
+            {
+                materials = await _materialExtractor.ExtractMaterialsAsync(result.Sections, _fileProvider);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Material extraction failed, using defaults: {Error}", ex.Message);
+            }
+        }
+
+        RenderMeshAndSend(result.Mesh, assetName, null, materials);
     }
 
-    private void RenderMeshAndSend(ArrayMesh arrayMesh, string assetName, MeshInfo? meshInfo)
+    private void RenderMeshAndSend(ArrayMesh arrayMesh, string assetName,
+        MeshInfo? meshInfo, ExtractedMaterial?[]? materials = null)
     {
         if (_meshInstance == null || _subViewport == null || _camera == null) return;
 
         // Assign mesh to the instance
         _meshInstance.Mesh = arrayMesh;
 
-        // Apply a default material so the mesh is visible
-        var material = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(0.7f, 0.7f, 0.7f),
-            Roughness = 0.6f,
-            Metallic = 0.1f,
-        };
-
+        // Apply per-surface materials (extracted or default fallback)
         _logger.Info("ArrayMesh surfaces={SurfaceCount}", arrayMesh.GetSurfaceCount());
         for (int i = 0; i < arrayMesh.GetSurfaceCount(); i++)
         {
-            arrayMesh.SurfaceSetMaterial(i, material);
+            StandardMaterial3D surfaceMaterial;
+
+            if (materials != null && i < materials.Length && materials[i] != null)
+            {
+                surfaceMaterial = materials[i]!.GodotMaterial;
+                _logger.Debug("Surface {Index}: material '{Name}' ({TexCount} textures)",
+                    i, materials[i]!.MaterialName ?? "unknown", materials[i]!.TextureCount);
+            }
+            else
+            {
+                surfaceMaterial = new StandardMaterial3D
+                {
+                    AlbedoColor = new Color(0.7f, 0.7f, 0.7f),
+                    Roughness = 0.6f,
+                    Metallic = 0.1f,
+                };
+                _logger.Debug("Surface {Index}: using default material", i);
+            }
+
+            arrayMesh.SurfaceSetMaterial(i, surfaceMaterial);
         }
 
         // Auto-frame the mesh
