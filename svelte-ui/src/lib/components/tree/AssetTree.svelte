@@ -3,6 +3,7 @@
 
     Virtual scrolling tree view for displaying asset structure.
     Receives data from tree view model and forwards interactions to C#.
+    Uses a custom scrollbar since CEF doesn't support native scrollbar drag.
 -->
 <script lang="ts">
     import TreeNode from './TreeNode.svelte';
@@ -41,6 +42,24 @@
     let totalHeight = $derived(flattenedNodes.length * TREE.ROW_HEIGHT);
     let offsetY = $derived(startIndex * TREE.ROW_HEIGHT);
 
+    // Custom scrollbar state
+    let isDragging = $state(false);
+    let dragStartY = $state(0);
+    let dragStartScrollTop = $state(0);
+
+    let showScrollbar = $derived(totalHeight > containerHeight);
+    let maxScroll = $derived(totalHeight - containerHeight);
+    let thumbHeight = $derived(
+        totalHeight > 0
+            ? Math.max(20, (containerHeight / totalHeight) * containerHeight)
+            : 0
+    );
+    let thumbTop = $derived(
+        maxScroll > 0
+            ? (scrollTop / maxScroll) * (containerHeight - thumbHeight)
+            : 0
+    );
+
     function handleScroll(event: Event) {
         const target = event.target as HTMLDivElement;
         scrollTop = target.scrollTop;
@@ -62,6 +81,46 @@
             observer.disconnect();
         };
     });
+
+    // Custom scrollbar drag handlers
+    function handleThumbMouseDown(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        isDragging = true;
+        dragStartY = event.clientY;
+        dragStartScrollTop = scrollTop;
+
+        window.addEventListener('mousemove', handleThumbMouseMove);
+        window.addEventListener('mouseup', handleThumbMouseUp);
+    }
+
+    function handleThumbMouseMove(event: MouseEvent) {
+        if (!isDragging || !containerRef) return;
+
+        const deltaY = event.clientY - dragStartY;
+        const trackRange = containerHeight - thumbHeight;
+        if (trackRange <= 0) return;
+
+        const scrollDelta = (deltaY / trackRange) * maxScroll;
+        const newScrollTop = Math.max(0, Math.min(maxScroll, dragStartScrollTop + scrollDelta));
+        containerRef.scrollTop = newScrollTop;
+    }
+
+    function handleThumbMouseUp() {
+        isDragging = false;
+        window.removeEventListener('mousemove', handleThumbMouseMove);
+        window.removeEventListener('mouseup', handleThumbMouseUp);
+    }
+
+    function handleTrackMouseDown(event: MouseEvent) {
+        if (!containerRef || event.target !== event.currentTarget) return;
+        event.preventDefault();
+
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        const clickY = event.clientY - rect.top;
+        const clickRatio = clickY / containerHeight;
+        containerRef.scrollTop = Math.max(0, clickRatio * totalHeight - containerHeight / 2);
+    }
 
     function handleKeyDown(event: KeyboardEvent) {
         const selectedId = tree.selection.selectedId;
@@ -103,46 +162,74 @@
     }
 </script>
 
-<div
-    class="asset-tree {className}"
-    bind:this={containerRef}
-    role="tree"
-    tabindex="0"
-    onscroll={handleScroll}
-    onkeydown={handleKeyDown}
->
-    {#if tree.isLoading}
-        <div class="loading">
-            <div class="loading-spinner"></div>
-            <span>Loading...</span>
-        </div>
-    {:else if flattenedNodes.length === 0}
-        <div class="empty">
-            <span class="text-muted">No asset loaded</span>
-        </div>
-    {:else}
-        <!-- Virtual scroll container -->
-        <div class="scroll-content" style="height: {totalHeight}px">
-            <div
-                class="visible-nodes"
-                style="transform: translateY({offsetY}px)"
-            >
-                {#each visibleNodes as { node, depth } (node.id)}
-                    <TreeNode {node} {depth} />
-                {/each}
+<div class="asset-tree-wrapper {className}">
+    <div
+        class="asset-tree"
+        bind:this={containerRef}
+        role="tree"
+        tabindex="0"
+        onscroll={handleScroll}
+        onkeydown={handleKeyDown}
+    >
+        {#if tree.isLoading}
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <span>Loading...</span>
             </div>
+        {:else if flattenedNodes.length === 0}
+            <div class="empty">
+                <span class="text-muted">No asset loaded</span>
+            </div>
+        {:else}
+            <!-- Virtual scroll container -->
+            <div class="scroll-content" style="height: {totalHeight}px">
+                <div
+                    class="visible-nodes"
+                    style="transform: translateY({offsetY}px)"
+                >
+                    {#each visibleNodes as { node, depth } (node.id)}
+                        <TreeNode {node} {depth} />
+                    {/each}
+                </div>
+            </div>
+        {/if}
+    </div>
+
+    {#if showScrollbar}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="scrollbar-track" onmousedown={handleTrackMouseDown}>
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+                class="scrollbar-thumb"
+                class:dragging={isDragging}
+                style="height: {thumbHeight}px; transform: translateY({thumbTop}px)"
+                onmousedown={handleThumbMouseDown}
+            ></div>
         </div>
     {/if}
 </div>
 
 <style>
+    .asset-tree-wrapper {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        position: relative;
+    }
+
     .asset-tree {
-        height: 100%;
-        overflow: auto;
+        flex: 1;
+        min-height: 0;
+        overflow-y: scroll;
+        scrollbar-width: none;
         outline: none;
     }
 
-    .asset-tree:focus-visible {
+    .asset-tree::-webkit-scrollbar {
+        display: none;
+    }
+
+    .asset-tree-wrapper:focus-within {
         outline: 2px solid var(--accent-primary);
         outline-offset: -2px;
     }
@@ -169,5 +256,26 @@
         top: 0;
         left: 0;
         right: 0;
+    }
+
+    .scrollbar-track {
+        width: var(--scrollbar-size);
+        flex-shrink: 0;
+        position: relative;
+    }
+
+    .scrollbar-thumb {
+        position: absolute;
+        left: 1px;
+        right: 1px;
+        background: var(--border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: background-color var(--transition-fast);
+    }
+
+    .scrollbar-thumb:hover,
+    .scrollbar-thumb.dragging {
+        background: var(--border-hover);
     }
 </style>

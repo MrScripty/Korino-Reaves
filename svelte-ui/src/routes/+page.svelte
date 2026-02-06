@@ -167,7 +167,8 @@
     .tree-container {
         display: flex;
         flex-direction: column;
-        height: 100%;
+        flex: 1;
+        min-height: 0;
     }
 
     :global(.tree-panel),
@@ -175,7 +176,12 @@
         height: 100%;
     }
 
-    :global(.tree-panel .panel-content),
+    :global(.tree-panel .panel-content) {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
     :global(.properties-panel .panel-content) {
         display: flex;
         flex-direction: column;
