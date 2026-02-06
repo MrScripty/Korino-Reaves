@@ -391,12 +391,9 @@ public sealed class MeshExtractor
             }
         }
 
-        // Reverse triangle winding: UE4→Godot coordinate transform (X, Z, -Y)
-        // flips handedness, so winding must be reversed to avoid back-face culling.
-        for (int i = 0; i < indexList.Count; i += 3)
-        {
-            (indexList[i + 1], indexList[i + 2]) = (indexList[i + 2], indexList[i + 1]);
-        }
+        // UE4→Godot coordinate transform (X, Z, -Y) negates one axis,
+        // which inherently flips winding from UE4's CW to Godot's CCW.
+        // No explicit winding reversal needed.
 
         var indexArray = indexList.ToArray();
 
@@ -487,11 +484,7 @@ public sealed class MeshExtractor
             }
         }
 
-        // Reverse triangle winding (same as static mesh — handedness flip)
-        for (int i = 0; i < indexList.Count; i += 3)
-        {
-            (indexList[i + 1], indexList[i + 2]) = (indexList[i + 2], indexList[i + 1]);
-        }
+        // UE4→Godot coordinate transform already flips winding (same as static mesh).
 
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Godot.Mesh.ArrayType.Max);
