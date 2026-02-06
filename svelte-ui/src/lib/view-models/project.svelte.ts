@@ -8,7 +8,7 @@
  */
 
 import { ipc } from '$lib/bridge/ipc';
-import type { ProjectInfo } from '$lib/bridge/types';
+import type { GameVersionEntry, GameVersionState, ProjectInfo } from '$lib/bridge/types';
 
 class ProjectVM {
     /** Currently open project */
@@ -19,6 +19,10 @@ class ProjectVM {
     isLoading = $state(false);
     /** Error message */
     error = $state<string | null>(null);
+    /** All available game versions (fetched once, cached) */
+    gameVersions = $state<GameVersionEntry[]>([]);
+    /** Current project's game version state */
+    gameVersionState = $state<GameVersionState | null>(null);
 
     get hasProject(): boolean {
         return this.currentProject !== null;
@@ -26,6 +30,21 @@ class ProjectVM {
 
     get projectName(): string {
         return this.currentProject?.name ?? 'No project';
+    }
+
+    /** Display label for the current game version */
+    get currentVersionLabel(): string {
+        if (!this.gameVersionState) return '';
+        if (this.gameVersionState.isAutoDetect) {
+            const autoLabel = this.findVersionLabel(this.gameVersionState.autoDetected);
+            return `Auto (${autoLabel})`;
+        }
+        return this.findVersionLabel(this.gameVersionState.selected);
+    }
+
+    private findVersionLabel(value: string): string {
+        const entry = this.gameVersions.find((v) => v.value === value);
+        return entry?.label ?? value;
     }
 
     /**
@@ -49,6 +68,29 @@ class ProjectVM {
             type: 'project',
             action: 'list',
             payload: {},
+        });
+    }
+
+    /**
+     * Fetches all available game versions from the backend.
+     */
+    fetchGameVersions(): void {
+        if (this.gameVersions.length > 0) return; // Already cached
+        ipc.send({
+            type: 'project',
+            action: 'getGameVersions',
+            payload: {},
+        });
+    }
+
+    /**
+     * Sets the game version for the current project.
+     */
+    setGameVersion(version: string): void {
+        ipc.send({
+            type: 'project',
+            action: 'setGameVersion',
+            payload: { version },
         });
     }
 
@@ -78,12 +120,23 @@ ipc.onAction<ProjectInfo>('project', 'opened', (payload) => {
     project.currentProject = payload;
     project.isLoading = false;
     project.error = null;
+    // Fetch game versions list if not cached
+    project.fetchGameVersions();
 });
 
 ipc.onAction('project', 'closed', () => {
     project.currentProject = null;
     project.isLoading = false;
     project.error = null;
+    project.gameVersionState = null;
+});
+
+ipc.onAction<{ versions: GameVersionEntry[] }>('project', 'gameVersions', (payload) => {
+    project.gameVersions = payload.versions;
+});
+
+ipc.onAction<GameVersionState>('project', 'gameVersion', (payload) => {
+    project.gameVersionState = payload;
 });
 
 ipc.onAction<{ projects: ProjectInfo[] }>('project', 'list', (payload) => {

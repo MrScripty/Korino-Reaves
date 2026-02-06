@@ -40,6 +40,7 @@
     <ProjectReference Include="../UAssetAPI/UAssetAPI/UAssetAPI.csproj" />
     <PackageReference Include="CUE4Parse" Version="1.2.2" />
     <PackageReference Include="CUE4Parse-Conversion" Version="1.2.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" />
   </ItemGroup>
 
   <!-- AI Agent Framework -->

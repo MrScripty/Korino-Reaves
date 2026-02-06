@@ -437,6 +437,34 @@ export interface IncrementalTreeUpdate {
 }
 
 // =============================================================================
+// Game Version Types
+// =============================================================================
+
+/**
+ * A single EGame enum entry for display in game version selectors.
+ */
+export interface GameVersionEntry {
+    /** EGame enum name (e.g., "GAME_HogwartsLegacy") */
+    value: string;
+    /** Human-readable label (e.g., "Hogwarts Legacy") */
+    label: string;
+    /** UE version group (e.g., "UE4.27") */
+    group: string;
+}
+
+/**
+ * Current game version selection state for a project.
+ */
+export interface GameVersionState {
+    /** Selected version enum name, or "AUTO" for auto-detect */
+    selected: string;
+    /** Auto-detected version enum name */
+    autoDetected: string;
+    /** Whether auto-detect mode is active */
+    isAutoDetect: boolean;
+}
+
+// =============================================================================
 // Viewport Types
 // =============================================================================
 

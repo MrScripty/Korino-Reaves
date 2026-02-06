@@ -38,6 +38,7 @@ public sealed class PreviewManager : IDisposable
 
     private DefaultFileProvider? _fileProvider;
     private string? _projectPath;
+    private EGame _currentVersion;
 
     // SubViewport scene tree for 3D rendering
     private SubViewport? _subViewport;
@@ -85,6 +86,14 @@ public sealed class PreviewManager : IDisposable
         else
         {
             _logger.Warning("SelectionHandler not found — preview will not auto-trigger");
+        }
+
+        // Subscribe to game version changes — recreate provider when version changes
+        var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
+        if (projectHandler != null)
+        {
+            projectHandler.GameVersionChanged += OnGameVersionChanged;
+            _logger.Info("PreviewManager subscribed to GameVersionChanged");
         }
     }
 
@@ -156,6 +165,26 @@ public sealed class PreviewManager : IDisposable
         _ = LoadPreviewAsync(relativePath);
     }
 
+    private void OnGameVersionChanged(EGame newVersion)
+    {
+        _logger.Info("Game version changed to {Version}, disposing provider", newVersion);
+
+        // Dispose the existing provider so it gets recreated with the new version
+        DisposeProvider();
+
+        // Re-preview the current selection if there is one
+        var selectionHandler = _dispatcher.GetHandler<SelectionHandler>();
+        var selectedId = selectionHandler?.CurrentState.SelectedId;
+        if (selectedId != null && selectedId.StartsWith("file:"))
+        {
+            var relativePath = selectedId.Substring(5);
+            if (relativePath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = LoadPreviewAsync(relativePath);
+            }
+        }
+    }
+
     private async Task LoadPreviewAsync(string relativePath)
     {
         using var activity = ActivitySource.StartActivity("LoadPreview");
@@ -176,65 +205,54 @@ public sealed class PreviewManager : IDisposable
                 return;
             }
 
-            // Convert file path to CUE4Parse game path.
-            // CUE4Parse registers paths relative to the PARENT of the mounted directory,
-            // so we need to prepend the project directory name.
-            var projectDirName = Path.GetFileName(
-                _projectPath!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            var gamePath = projectDirName + "/" + relativePath;
-            if (gamePath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
-            {
-                gamePath = gamePath.Substring(0, gamePath.Length - 7);
-            }
-
             var assetName = Path.GetFileNameWithoutExtension(relativePath);
 
-            _logger.Info("Loading preview for: gamePath={GamePath}, relativePath={RelPath}, projectPath={ProjPath}",
-                gamePath, relativePath, _projectPath ?? "(null)");
+            // Resolve the correct game path by trying multiple formats.
+            // CUE4Parse path indexing depends on the provider version and mount method.
+            var gamePath = ResolveGamePath(relativePath);
 
-            // Check if the game path exists in the provider's file index
-            var fileFound = _fileProvider.Files.ContainsKey(gamePath);
-            _logger.Info("Game path in provider index: {Found} (provider has {Count} files)",
-                fileFound, _fileProvider.Files.Count);
-
-            if (!fileFound)
+            // LoadPackageObject expects path WITHOUT .uasset extension
+            var loadPath = gamePath;
+            if (loadPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
             {
-                // Try to find similar paths to diagnose path format mismatch
-                var fileName = Path.GetFileNameWithoutExtension(relativePath);
-                var possibleKeys = _fileProvider.Files.Keys
-                    .Where(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
-                    .Take(5)
-                    .ToArray();
-                if (possibleKeys.Length > 0)
-                {
-                    _logger.Info("Possible matching paths in provider:");
-                    foreach (var key in possibleKeys)
-                    {
-                        _logger.Info("  {Key}", key);
-                    }
-                }
+                loadPath = loadPath.Substring(0, loadPath.Length - 7);
             }
+
+            _logger.Info("Loading preview: {LoadPath} (EGame={Game})",
+                loadPath, _fileProvider.Versions.Game);
 
             // Try loading as each supported type via CUE4Parse.
             // LoadPackageObject throws if the asset can't be loaded as that type.
             var texture = await Task.Run(() =>
             {
-                try { return _fileProvider.LoadPackageObject<UTexture2D>(gamePath); }
+                try { return _fileProvider.LoadPackageObject<UTexture2D>(loadPath); }
                 catch (Exception ex)
                 {
-                    _logger.Debug("Not a UTexture2D: {Error}", ex.Message);
+                    _logger.Warning("Not a UTexture2D: {Error}", ex.Message);
                     return null;
                 }
             });
             if (texture != null)
             {
+                // If texture loaded but PlatformData is empty, the EGame version is likely wrong.
+                // Try common UE4 versions to find one that deserializes correctly.
+                if (texture.PlatformData.SizeX == 0 && texture.PlatformData.SizeY == 0)
+                {
+                    _logger.Warning("Texture has empty PlatformData — trying version fallback...");
+                    var fallbackResult = await TryVersionFallbackAsync(loadPath);
+                    if (fallbackResult != null)
+                    {
+                        texture = fallbackResult;
+                    }
+                }
+
                 await PreviewTextureAsync(texture, assetName);
                 return;
             }
 
             var staticMesh = await Task.Run(() =>
             {
-                try { return _fileProvider.LoadPackageObject<UStaticMesh>(gamePath); }
+                try { return _fileProvider.LoadPackageObject<UStaticMesh>(loadPath); }
                 catch (Exception ex)
                 {
                     _logger.Debug("Not a UStaticMesh: {Error}", ex.Message);
@@ -249,7 +267,7 @@ public sealed class PreviewManager : IDisposable
 
             var skelMesh = await Task.Run(() =>
             {
-                try { return _fileProvider.LoadPackageObject<USkeletalMesh>(gamePath); }
+                try { return _fileProvider.LoadPackageObject<USkeletalMesh>(loadPath); }
                 catch (Exception ex)
                 {
                     _logger.Debug("Not a USkeletalMesh: {Error}", ex.Message);
@@ -510,6 +528,175 @@ public sealed class PreviewManager : IDisposable
     }
 
     // -----------------------------------------------------------------
+    // EGame Version Fallback
+    // -----------------------------------------------------------------
+
+    /// <summary>
+    /// EGame versions to try when the current version produces empty PlatformData.
+    /// Ordered from most to least common. The key boundary is UE4.20 where
+    /// the skip offset in DeserializeCookedPlatformData changes from int32 to int64.
+    /// </summary>
+    private static readonly EGame[] VersionFallbacks =
+    {
+        EGame.GAME_UE4_17,  // Pre-4.20 (4-byte skip offsets)
+        EGame.GAME_UE4_14,  // Older UE4
+        EGame.GAME_UE4_22,  // UE4.20-4.22
+        EGame.GAME_UE4_25,  // UE4.23-4.25
+        EGame.GAME_UE4_27,  // UE4.26-4.27
+        EGame.GAME_UE5_0,   // UE5.0
+        EGame.GAME_UE5_3,   // UE5.3+
+    };
+
+    /// <summary>
+    /// Tries loading a texture with different EGame versions when the current
+    /// version produces empty PlatformData. Returns the texture if a version
+    /// works, or null if none do.
+    /// </summary>
+    private async Task<UTexture2D?> TryVersionFallbackAsync(string loadPath)
+    {
+        if (_fileProvider == null) return null;
+
+        var originalVersion = _fileProvider.Versions.Game;
+
+        foreach (var version in VersionFallbacks)
+        {
+            if (version == originalVersion) continue; // Already tried
+
+            _logger.Info("Trying EGame fallback: {Version}", version);
+            _fileProvider.Versions.Game = version;
+
+            try
+            {
+                var texture = await Task.Run(() =>
+                {
+                    try { return _fileProvider.LoadPackageObject<UTexture2D>(loadPath); }
+                    catch { return null; }
+                });
+
+                if (texture != null && texture.PlatformData.SizeX > 0 && texture.PlatformData.SizeY > 0)
+                {
+                    _logger.Info("Version fallback succeeded with {Version}: {W}x{H} {Fmt}",
+                        version, texture.PlatformData.SizeX, texture.PlatformData.SizeY,
+                        texture.PlatformData.PixelFormat);
+
+                    // Update the version state so future loads use this version
+                    _currentVersion = version;
+                    var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
+                    if (projectHandler != null)
+                    {
+                        projectHandler.SetGameVersionFromImport(
+                            _projectPath!, version.ToString());
+                        _logger.Info("Auto-corrected game version to {Version}", version);
+                    }
+
+                    return texture;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug("Fallback {Version} failed: {Error}", version, ex.Message);
+            }
+        }
+
+        // None worked — restore original version
+        _fileProvider.Versions.Game = originalVersion;
+        _logger.Warning("No EGame version produced valid texture data. " +
+            "Try selecting the correct game from the version dropdown.");
+        return null;
+    }
+
+    // -----------------------------------------------------------------
+    // CUE4Parse Path Resolution
+    // -----------------------------------------------------------------
+
+    /// <summary>
+    /// Resolves the correct game path for CUE4Parse by trying multiple formats.
+    /// Logs diagnostic info when the path isn't found.
+    /// </summary>
+    private string ResolveGamePath(string relativePath)
+    {
+        // Normalize separators to forward slashes
+        var normalizedPath = relativePath.Replace('\\', '/');
+
+        // Prepare both with and without .uasset extension
+        var withExt = normalizedPath;
+        var withoutExt = normalizedPath;
+        if (normalizedPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+        {
+            withoutExt = normalizedPath.Substring(0, normalizedPath.Length - 7);
+        }
+        else
+        {
+            withExt = normalizedPath + ".uasset";
+        }
+
+        var projectDirName = Path.GetFileName(
+            _projectPath!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        // Try multiple path formats — CUE4Parse behavior varies between
+        // PAK-mounted (keys without extension) and loose-file (keys with extension)
+        string[] candidates =
+        {
+            projectDirName + "/" + withoutExt,  // Parent-relative, no extension (PAK style)
+            withoutExt,                         // Dir-relative, no extension
+            projectDirName + "/" + withExt,      // Parent-relative, with extension (loose file style)
+            withExt,                            // Dir-relative, with extension
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (_fileProvider!.Files.ContainsKey(candidate))
+            {
+                _logger.Info("Resolved game path: {Path}", candidate);
+                return candidate;
+            }
+        }
+
+        // None matched — log diagnostics
+        _logger.Warning("Game path not found in provider index (tried {Count} formats, provider has {FileCount} files)",
+            candidates.Length, _fileProvider!.Files.Count);
+        foreach (var candidate in candidates)
+        {
+            _logger.Warning("  Tried: {Path}", candidate);
+        }
+
+        // Log sample keys so we can see the actual format
+        var sampleKeys = _fileProvider.Files.Keys.Take(5).ToArray();
+        if (sampleKeys.Length > 0)
+        {
+            _logger.Info("Sample provider keys:");
+            foreach (var key in sampleKeys)
+            {
+                _logger.Info("  {Key}", key);
+            }
+        }
+
+        // Try to find the file by name alone (with or without extension)
+        var fileName = Path.GetFileNameWithoutExtension(relativePath);
+        var matchingKeys = _fileProvider.Files.Keys
+            .Where(k => k.EndsWith("/" + fileName, StringComparison.OrdinalIgnoreCase)
+                     || k.EndsWith("/" + fileName + ".uasset", StringComparison.OrdinalIgnoreCase)
+                     || k.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+            .Take(5)
+            .ToArray();
+        if (matchingKeys.Length > 0)
+        {
+            _logger.Info("Found matching paths by filename '{FileName}':", fileName);
+            foreach (var key in matchingKeys)
+            {
+                _logger.Info("  {Key}", key);
+            }
+            // Use the first match
+            _logger.Info("Using first match: {Path}", matchingKeys[0]);
+            return matchingKeys[0];
+        }
+
+        // Fall back to the first candidate (will likely fail at load time)
+        _logger.Warning("No matching paths found for '{FileName}' — using best guess: {Path}", fileName, candidates[0]);
+        return candidates[0];
+    }
+
+    // -----------------------------------------------------------------
     // CUE4Parse Provider Management
     // -----------------------------------------------------------------
 
@@ -525,8 +712,10 @@ public sealed class PreviewManager : IDisposable
             return;
         }
 
-        // If the project path hasn't changed, reuse the existing provider
-        if (_fileProvider != null && _projectPath == currentProject.Path)
+        var gameVersion = projectHandler!.EffectiveGameVersion;
+
+        // If the project path and version haven't changed, reuse the existing provider
+        if (_fileProvider != null && _projectPath == currentProject.Path && _currentVersion == gameVersion)
         {
             return;
         }
@@ -534,70 +723,24 @@ public sealed class PreviewManager : IDisposable
         // Dispose old provider and create new one
         DisposeProvider();
         _projectPath = currentProject.Path;
+        _currentVersion = gameVersion;
 
-        _logger.Info("Creating CUE4Parse provider for project: {Path}", _projectPath);
+        _logger.Info("Creating CUE4Parse provider for project: {Path}, version: {Version}", _projectPath, gameVersion);
 
         CompressionInitializerFactory.EnsureInitialized(_logger);
-
-        var ueVersion = DetectUeVersion(_projectPath);
-        _logger.Info("Detected UE version: {Version}", ueVersion);
 
         _fileProvider = new DefaultFileProvider(
             _projectPath,
             SearchOption.AllDirectories,
-            versions: new VersionContainer(ueVersion),
+            versions: new VersionContainer(gameVersion),
             pathComparer: StringComparer.OrdinalIgnoreCase
         );
 
         _fileProvider.Initialize();
         await Task.Run(() => _fileProvider.Mount());
 
-        _logger.Info("File provider ready: {FileCount} files", _fileProvider.Files.Count);
-    }
-
-    /// <summary>
-    /// Detects UE version by reading the legacy file version from the first .uasset found.
-    /// UE4 packages have legacy version >= -7, UE5 packages have <= -8.
-    /// </summary>
-    private EGame DetectUeVersion(string projectPath)
-    {
-        try
-        {
-            // Find the first .uasset file in the project
-            var uassetFiles = Directory.EnumerateFiles(projectPath, "*.uasset", SearchOption.AllDirectories);
-            foreach (var filePath in uassetFiles)
-            {
-                using var fs = File.OpenRead(filePath);
-                if (fs.Length < 8) continue;
-
-                var header = new byte[8];
-                if (fs.Read(header, 0, 8) < 8) continue;
-
-                // Check magic number (little-endian 0x9E2A83C1)
-                uint magic = BitConverter.ToUInt32(header, 0);
-                if (magic != 0x9E2A83C1) continue;
-
-                // Read legacy file version
-                int legacyVersion = BitConverter.ToInt32(header, 4);
-                _logger.Debug("Package {Path}: magic=0x{Magic:X8}, legacyVersion={Version}",
-                    Path.GetFileName(filePath), magic, legacyVersion);
-
-                // UE5 packages use legacy version <= -8
-                if (legacyVersion <= -8)
-                {
-                    return EGame.GAME_UE5_3;
-                }
-
-                // UE4 packages use legacy version >= -7
-                return EGame.GAME_UE4_27;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning("Failed to detect UE version, defaulting to UE4: {Error}", ex.Message);
-        }
-
-        return EGame.GAME_UE4_27;
+        _logger.Info("File provider ready: {FileCount} files, version: {Version}",
+            _fileProvider.Files.Count, gameVersion);
     }
 
     private void DisposeProvider()
@@ -631,6 +774,13 @@ public sealed class PreviewManager : IDisposable
         if (selectionHandler != null)
         {
             selectionHandler.SelectionChanged -= OnSelectionChanged;
+        }
+
+        // Unsubscribe from game version changes
+        var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
+        if (projectHandler != null)
+        {
+            projectHandler.GameVersionChanged -= OnGameVersionChanged;
         }
 
         DisposeProvider();

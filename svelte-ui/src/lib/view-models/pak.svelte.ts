@@ -12,6 +12,7 @@ class PakVM {
     // Dialog state
     showDialog = $state(false);
     pendingPakPath = $state<string | null>(null);
+    selectedGameVersion = $state('AUTO');
 
     // Import state
     isImporting = $state(false);
@@ -40,6 +41,7 @@ class PakVM {
         this.error = null;
         this.projectNameError = null;
         this.extractedFiles = [];
+        this.selectedGameVersion = 'AUTO';
     }
 
     /**
@@ -99,6 +101,7 @@ class PakVM {
             payload: {
                 pakPath: this.pendingPakPath,
                 projectName,
+                gameVersion: this.selectedGameVersion === 'AUTO' ? null : this.selectedGameVersion,
             },
         });
     }

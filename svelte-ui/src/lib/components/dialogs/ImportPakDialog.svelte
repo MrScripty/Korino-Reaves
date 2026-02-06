@@ -1,21 +1,57 @@
 <!--
     Import PAK Dialog
 
-    Modal dialog for entering a project name before importing a PAK file.
-    Validates the name and shows preview of output path.
+    Modal dialog for entering a project name and selecting game version
+    before importing a PAK file.
 -->
 <script lang="ts">
     import Modal from '$lib/components/common/Modal.svelte';
     import { pak } from '$lib/view-models/pak.svelte';
+    import { project } from '$lib/view-models/project.svelte';
+    import type { GameVersionEntry } from '$lib/bridge/types';
 
     let projectName = $state('');
     let inputRef = $state<HTMLInputElement | null>(null);
+    let gameSearch = $state('');
+
+    // Fetch game versions when dialog opens
+    $effect(() => {
+        if (pak.showDialog) {
+            project.fetchGameVersions();
+        }
+    });
 
     // Focus input when dialog opens
     $effect(() => {
         if (pak.showDialog && inputRef) {
             inputRef.focus();
         }
+    });
+
+    // Filter and group game versions by search term
+    let filteredVersions = $derived.by(() => {
+        const search = gameSearch.toLowerCase().trim();
+        if (!search) return project.gameVersions;
+        return project.gameVersions.filter(
+            (v) =>
+                v.label.toLowerCase().includes(search) ||
+                v.value.toLowerCase().includes(search) ||
+                v.group.toLowerCase().includes(search),
+        );
+    });
+
+    // Group filtered versions by UE version
+    let groupedVersions = $derived.by(() => {
+        const groups = new Map<string, GameVersionEntry[]>();
+        for (const entry of filteredVersions) {
+            const existing = groups.get(entry.group);
+            if (existing) {
+                existing.push(entry);
+            } else {
+                groups.set(entry.group, [entry]);
+            }
+        }
+        return groups;
     });
 
     // Validate on input change (debounced)
@@ -39,15 +75,21 @@
         }, 300);
     }
 
+    function selectGameVersion(value: string) {
+        pak.selectedGameVersion = value;
+    }
+
     function handleImport() {
         if (!projectName || pak.projectNameError) return;
         pak.startImport(projectName);
         projectName = '';
+        gameSearch = '';
     }
 
     function handleClose() {
         pak.closeDialog();
         projectName = '';
+        gameSearch = '';
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -67,7 +109,7 @@
     title="Import PAK Archive"
     open={pak.showDialog}
     onClose={handleClose}
-    width="500px"
+    width="560px"
 >
     <div class="dialog-content">
         <p class="pak-info">
@@ -95,6 +137,50 @@
             <p class="help-text">
                 Only letters, numbers, underscores, and hyphens allowed.
             </p>
+        </div>
+
+        <!-- Game Version Selector -->
+        <div class="form-group">
+            <label for="game-search">Game Version</label>
+            <input
+                id="game-search"
+                type="text"
+                bind:value={gameSearch}
+                placeholder="Search games..."
+                autocomplete="off"
+                spellcheck="false"
+            />
+
+            <div class="game-list">
+                <!-- Auto-detect option -->
+                <button
+                    class="game-option"
+                    class:selected={pak.selectedGameVersion === 'AUTO'}
+                    onclick={() => selectGameVersion('AUTO')}
+                >
+                    <span class="radio" class:checked={pak.selectedGameVersion === 'AUTO'}></span>
+                    <span class="game-label">Auto-Detect</span>
+                    <span class="game-hint">Detect UE version from file headers</span>
+                </button>
+
+                {#each [...groupedVersions] as [group, entries]}
+                    <div class="game-group-header">{group}</div>
+                    {#each entries as entry}
+                        <button
+                            class="game-option"
+                            class:selected={pak.selectedGameVersion === entry.value}
+                            onclick={() => selectGameVersion(entry.value)}
+                        >
+                            <span class="radio" class:checked={pak.selectedGameVersion === entry.value}></span>
+                            <span class="game-label">{entry.label}</span>
+                        </button>
+                    {/each}
+                {/each}
+
+                {#if filteredVersions.length === 0 && gameSearch}
+                    <div class="game-empty">No games match "{gameSearch}"</div>
+                {/if}
+            </div>
         </div>
 
         {#if projectName && !pak.projectNameError}
@@ -186,6 +272,81 @@
         margin: 0;
         font-size: var(--text-xs);
         color: var(--text-muted);
+    }
+
+    /* Game version list */
+    .game-list {
+        max-height: 240px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--bg-primary);
+    }
+
+    .game-group-header {
+        position: sticky;
+        top: 0;
+        padding: var(--space-1) var(--space-3);
+        font-size: var(--text-xs);
+        font-weight: 600;
+        color: var(--text-muted);
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .game-option {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        width: 100%;
+        padding: var(--space-1) var(--space-3);
+        font-size: var(--text-sm);
+        color: var(--text-primary);
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .game-option:hover {
+        background: var(--bg-hover);
+    }
+
+    .game-option.selected {
+        background: rgba(var(--accent-rgb), 0.1);
+    }
+
+    .radio {
+        flex-shrink: 0;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--border-strong, var(--border));
+        border-radius: 50%;
+        transition: border-color 150ms, background 150ms;
+    }
+
+    .radio.checked {
+        border-color: var(--accent);
+        background: var(--accent);
+        box-shadow: inset 0 0 0 2px var(--bg-primary);
+    }
+
+    .game-label {
+        flex: 1;
+    }
+
+    .game-hint {
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+    }
+
+    .game-empty {
+        padding: var(--space-4);
+        text-align: center;
+        color: var(--text-muted);
+        font-size: var(--text-sm);
     }
 
     .preview {

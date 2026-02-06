@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using UAssetViewer.Assets;
+using UAssetViewer.Bridge;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
 
@@ -22,7 +23,8 @@ namespace UAssetViewer.Bridge.Handlers;
 /// </summary>
 public sealed record ExtractPakRequest(
     string PakPath,
-    string ProjectName
+    string ProjectName,
+    string? GameVersion = null
 );
 
 /// <summary>
@@ -251,6 +253,14 @@ public sealed class PakHandler : IMessageHandler
             _pakManager.Close();
 
             _logger.Info("Import complete: {Count} files extracted to {OutputDir}", extractedCount, outputDir);
+
+            // Save game version to project config if specified
+            if (!string.IsNullOrEmpty(request.GameVersion))
+            {
+                var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
+                projectHandler?.SetGameVersionFromImport(outputDir, request.GameVersion);
+                _logger.Info("Saved game version to project config: {Version}", request.GameVersion);
+            }
 
             // Send completion
             SendComplete(requestId, outputDir, extractedCount);

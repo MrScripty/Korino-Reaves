@@ -6,7 +6,9 @@
 <script lang="ts">
     import { asset } from '$lib/view-models/asset.svelte';
     import { pak } from '$lib/view-models/pak.svelte';
+    import { project } from '$lib/view-models/project.svelte';
     import { tree } from '$lib/view-models/tree.svelte';
+    import GameVersionSelector from './GameVersionSelector.svelte';
 
     // Current status message (transient UI state)
     let statusMessage = $state<string | null>(null);
@@ -51,6 +53,11 @@
 
     <!-- Right side: Statistics -->
     <div class="status-right">
+        {#if project.hasProject}
+            <div class="status-item version-item">
+                <GameVersionSelector />
+            </div>
+        {/if}
         {#if asset.assetInfo}
             <div class="status-item">
                 <span class="status-label">UE:</span>
@@ -96,6 +103,10 @@
     .status-left .status-item:last-child,
     .status-right .status-item:last-child {
         border-right: none;
+    }
+
+    .status-item.version-item {
+        padding: 0;
     }
 
     .status-item.loading {

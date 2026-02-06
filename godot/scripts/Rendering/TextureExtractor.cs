@@ -84,14 +84,32 @@ public sealed class TextureExtractor
 
         try
         {
+            _logger.Info("Texture '{Name}': {W}x{H}, Format={Format}, Mips={MipCount}",
+                texture.Name, texture.PlatformData.SizeX, texture.PlatformData.SizeY,
+                texture.Format, texture.PlatformData.Mips?.Length ?? 0);
+
             // Decode texture using CUE4Parse-Conversion
-            var decoded = await Task.Run(() => texture.Decode());
+            var decoded = await Task.Run(() =>
+            {
+                try
+                {
+                    return texture.Decode();
+                }
+                catch (Exception decodeEx)
+                {
+                    _logger.Error(decodeEx, "Exception during texture.Decode() for: {Name}", texture.Name);
+                    return null;
+                }
+            });
 
             if (decoded == null)
             {
-                _logger.Warning("Failed to decode texture: {Name}", texture.Name);
+                _logger.Warning("Failed to decode texture: {Name} (Decode() returned null)", texture.Name);
                 return null;
             }
+
+            _logger.Info("Decoded texture '{Name}': {W}x{H}, ColorType={CT}",
+                texture.Name, decoded.Width, decoded.Height, decoded.ColorType);
 
             // Convert SKBitmap to Godot Image
             var image = ConvertToGodotImage(decoded);
