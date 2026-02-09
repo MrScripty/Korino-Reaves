@@ -33,6 +33,7 @@ public static class ViewportCommands
     public const string ToggleGrid = "toggle_grid";
     public const string ToggleWireframe = "toggle_wireframe";
     public const string SetBackground = "set_background";
+    public const string ToggleDoubleSided = "toggle_double_sided";
 }
 
 /// <summary>

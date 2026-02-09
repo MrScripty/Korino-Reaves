@@ -31,7 +31,7 @@ public sealed class ViewportHandler : IMessageHandler
 
     public bool CanHandle(string action)
     {
-        return action is "orbitCamera" or "zoomCamera" or "resetCamera";
+        return action is "orbitCamera" or "zoomCamera" or "resetCamera" or "setDoubleSided";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
@@ -48,6 +48,9 @@ public sealed class ViewportHandler : IMessageHandler
                 break;
             case "resetCamera":
                 _previewManager.HandleCameraReset();
+                break;
+            case "setDoubleSided":
+                HandleSetDoubleSided(message);
                 break;
         }
 
@@ -78,5 +81,16 @@ public sealed class ViewportHandler : IMessageHandler
             delta = deltaProp.GetSingle();
 
         _previewManager.HandleCameraZoom(delta);
+    }
+
+    private void HandleSetDoubleSided(IpcMessage message)
+    {
+        if (message.Payload is not JsonElement element) return;
+
+        bool enabled = true;
+        if (element.TryGetProperty("enabled", out var enabledProp))
+            enabled = enabledProp.GetBoolean();
+
+        _previewManager.HandleSetDoubleSided(enabled);
     }
 }

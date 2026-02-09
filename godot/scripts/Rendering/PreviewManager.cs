@@ -55,6 +55,7 @@ public sealed class PreviewManager : IDisposable
     private float _cameraPitch = -30f;  // degrees
     private Vector3 _cameraTarget = Vector3.Zero;
 
+    private bool _doubleSided = true;
     private bool _disposed;
 
     private const int ViewportWidth = 1024;
@@ -417,6 +418,10 @@ public sealed class PreviewManager : IDisposable
                 _logger.Debug("Surface {Index}: using default material", i);
             }
 
+            surfaceMaterial.CullMode = _doubleSided
+                ? BaseMaterial3D.CullModeEnum.Disabled
+                : BaseMaterial3D.CullModeEnum.Back;
+
             arrayMesh.SurfaceSetMaterial(i, surfaceMaterial);
         }
 
@@ -554,6 +559,32 @@ public sealed class PreviewManager : IDisposable
             UpdateCameraTransform();
         }
         RequestCapture();
+    }
+
+    /// <summary>
+    /// Toggles double-sided (backface culling disabled) rendering for the current mesh.
+    /// </summary>
+    public void HandleSetDoubleSided(bool enabled)
+    {
+        _doubleSided = enabled;
+
+        // Update materials on the current mesh in-place
+        if (_meshInstance?.Mesh is ArrayMesh arrayMesh)
+        {
+            var cullMode = _doubleSided
+                ? BaseMaterial3D.CullModeEnum.Disabled
+                : BaseMaterial3D.CullModeEnum.Back;
+
+            for (int i = 0; i < arrayMesh.GetSurfaceCount(); i++)
+            {
+                if (arrayMesh.SurfaceGetMaterial(i) is StandardMaterial3D mat)
+                {
+                    mat.CullMode = cullMode;
+                }
+            }
+
+            RequestCapture();
+        }
     }
 
     private void UpdateCameraTransform()
