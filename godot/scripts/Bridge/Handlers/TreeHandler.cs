@@ -4,8 +4,10 @@
 // Provides tree structure for the asset explorer UI.
 
 using System;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Godot;
 using UAssetViewer.Assets;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
@@ -34,7 +36,8 @@ public sealed class TreeHandler : IMessageHandler
     public bool CanHandle(string action)
     {
         return action is "getRoot" or "getChildren" or "search" or "getPath"
-            or "toggle" or "expand" or "collapse" or "expandAll" or "collapseAll";
+            or "toggle" or "expand" or "collapse" or "expandAll" or "collapseAll"
+            or "openInFileBrowser";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
@@ -52,6 +55,7 @@ public sealed class TreeHandler : IMessageHandler
             "collapse" => HandleCollapse(message),
             "expandAll" => HandleExpandAll(message),
             "collapseAll" => HandleCollapseAll(message),
+            "openInFileBrowser" => HandleOpenInFileBrowser(message),
             _ => Task.FromResult<IpcMessage?>(null),
         };
     }
@@ -273,6 +277,33 @@ public sealed class TreeHandler : IMessageHandler
         return Task.FromResult<IpcMessage?>(new IpcMessage(
             MessageTypes.Selection, "update", newState,
             message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleOpenInFileBrowser(IpcMessage message)
+    {
+        var nodeId = ParseNodeId(message.Payload);
+        if (string.IsNullOrEmpty(nodeId))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in openInFileBrowser request"));
+
+        var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
+        if (projectHandler?.CurrentProject == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "No project open"));
+
+        // Strip file: or folder: prefix to get relative path
+        string relativePath;
+        if (nodeId.StartsWith("file:"))
+            relativePath = nodeId.Substring(5);
+        else if (nodeId.StartsWith("folder:"))
+            relativePath = nodeId.Substring(7);
+        else
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Invalid node id for file browser"));
+
+        var absolutePath = Path.Combine(projectHandler.CurrentProject.Path, relativePath);
+
+        _logger.Info("Opening in file browser: {Path}", absolutePath);
+        OS.ShellShowInFileManager(absolutePath);
+
+        return Task.FromResult<IpcMessage?>(null);
     }
 
     // -----------------------------------------------------------------

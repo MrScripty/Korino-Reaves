@@ -44,6 +44,23 @@ public sealed class ProjectHandler : IMessageHandler
 {
     private static readonly Regex PascalCaseSplitter = new(@"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[a-zA-Z])(?=\d)", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Extensions for the primary asset file in a UE asset group.
+    /// </summary>
+    private static readonly HashSet<string> PrimaryExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".uasset", ".umap"
+    };
+
+    /// <summary>
+    /// Extensions for companion files that accompany a primary asset.
+    /// These are grouped with their primary and hidden from the tree.
+    /// </summary>
+    private static readonly HashSet<string> CompanionExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".uexp", ".ubulk"
+    };
+
     private readonly IAppLogger _logger;
     private readonly IpcDispatcher _dispatcher;
     private ProjectInfo? _currentProject;
@@ -70,6 +87,16 @@ public sealed class ProjectHandler : IMessageHandler
     /// Event raised when the game version changes.
     /// </summary>
     public event Action<EGame>? GameVersionChanged;
+
+    /// <summary>
+    /// Event raised when a project is opened.
+    /// </summary>
+    public event Action<ProjectInfo>? ProjectOpened;
+
+    /// <summary>
+    /// Event raised when a project is closed.
+    /// </summary>
+    public event Action? ProjectClosed;
 
     public string MessageType => MessageTypes.Project;
 
@@ -164,6 +191,9 @@ public sealed class ProjectHandler : IMessageHandler
             // Broadcast game version state
             BroadcastGameVersionState();
 
+            // Notify subscribers
+            ProjectOpened?.Invoke(_currentProject);
+
             // Return project opened response
             return new IpcMessage(
                 MessageTypes.Project,
@@ -233,6 +263,9 @@ public sealed class ProjectHandler : IMessageHandler
 
         // Clear the tree
         _dispatcher.Send(MessageTypes.Tree, "update", new { nodes = Array.Empty<TreeNode>() });
+
+        // Notify subscribers
+        ProjectClosed?.Invoke();
 
         return Task.FromResult<IpcMessage?>(new IpcMessage(
             MessageTypes.Project,
@@ -610,12 +643,8 @@ public sealed class ProjectHandler : IMessageHandler
                 rootNodes.Add(node);
             }
 
-            // Get top-level files
-            foreach (var file in Directory.GetFiles(rootPath).OrderBy(f => f))
-            {
-                var node = BuildFileNode(file, rootPath);
-                rootNodes.Add(node);
-            }
+            // Get top-level files (group asset triads into proxy nodes)
+            rootNodes.AddRange(BuildFileNodes(rootPath, rootPath));
         }
         catch (Exception ex)
         {
@@ -642,10 +671,7 @@ public sealed class ProjectHandler : IMessageHandler
             children.Add(BuildDirectoryNode(subDir, rootPath));
         }
 
-        foreach (var file in Directory.GetFiles(dirPath).OrderBy(f => f))
-        {
-            children.Add(BuildFileNode(file, rootPath));
-        }
+        children.AddRange(BuildFileNodes(dirPath, rootPath));
 
         return new TreeNode(
             id,
@@ -657,20 +683,137 @@ public sealed class ProjectHandler : IMessageHandler
         );
     }
 
-    private TreeNode BuildFileNode(string filePath, string rootPath)
+    /// <summary>
+    /// Checks whether a file has a known UE asset-related extension
+    /// (primary or companion), including compound extensions like .uexp.bak.
+    /// </summary>
+    private static bool IsAssetRelatedFile(string filePath)
+    {
+        if (filePath.EndsWith(".uexp.bak", StringComparison.OrdinalIgnoreCase))
+            return true;
+        var ext = System.IO.Path.GetExtension(filePath);
+        return PrimaryExtensions.Contains(ext) || CompanionExtensions.Contains(ext);
+    }
+
+    /// <summary>
+    /// Gets the asset base name for grouping, stripping known extensions.
+    /// Handles compound extensions like .uexp.bak.
+    /// </summary>
+    private static string GetAssetBaseName(string filePath)
+    {
+        var fileName = System.IO.Path.GetFileName(filePath);
+        if (fileName.EndsWith(".uexp.bak", StringComparison.OrdinalIgnoreCase))
+            return fileName.Substring(0, fileName.Length - ".uexp.bak".Length);
+        return System.IO.Path.GetFileNameWithoutExtension(fileName);
+    }
+
+    /// <summary>
+    /// Builds file nodes for a directory, grouping UE asset triads
+    /// (.uasset + .uexp + .ubulk) into single proxy nodes.
+    /// </summary>
+    private List<TreeNode> BuildFileNodes(string dirPath, string rootPath)
+    {
+        var allFiles = Directory.GetFiles(dirPath).OrderBy(f => f).ToArray();
+
+        // Separate asset-related files from other files
+        var assetGroups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var standaloneFiles = new List<string>();
+
+        foreach (var file in allFiles)
+        {
+            if (IsAssetRelatedFile(file))
+            {
+                var baseName = GetAssetBaseName(file);
+                if (!assetGroups.TryGetValue(baseName, out var group))
+                {
+                    group = new List<string>();
+                    assetGroups[baseName] = group;
+                }
+                group.Add(file);
+            }
+            else
+            {
+                standaloneFiles.Add(file);
+            }
+        }
+
+        var nodes = new List<TreeNode>();
+
+        // Build proxy nodes for asset groups
+        foreach (var (baseName, group) in assetGroups)
+        {
+            var primary = group.FirstOrDefault(f =>
+            {
+                var ext = System.IO.Path.GetExtension(f);
+                return PrimaryExtensions.Contains(ext);
+            });
+
+            if (primary != null)
+            {
+                var companionCount = group.Count - 1;
+                nodes.Add(BuildAssetGroupNode(primary, baseName, companionCount, rootPath));
+            }
+            else
+            {
+                // Orphaned companions without a primary — show individually
+                foreach (var file in group)
+                {
+                    nodes.Add(BuildSingleFileNode(file, rootPath));
+                }
+            }
+        }
+
+        // Build individual nodes for non-asset files
+        foreach (var file in standaloneFiles)
+        {
+            nodes.Add(BuildSingleFileNode(file, rootPath));
+        }
+
+        // Sort all file nodes alphabetically by display name
+        nodes.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        return nodes;
+    }
+
+    /// <summary>
+    /// Builds a single proxy node representing a UE asset group.
+    /// The ID points to the primary file so selection/loading works unchanged.
+    /// </summary>
+    private TreeNode BuildAssetGroupNode(
+        string primaryFile, string baseName, int companionCount, string rootPath)
+    {
+        var relativePath = System.IO.Path.GetRelativePath(rootPath, primaryFile);
+        var id = $"file:{relativePath.Replace(System.IO.Path.DirectorySeparatorChar, '/')}";
+        var primaryExt = System.IO.Path.GetExtension(primaryFile);
+
+        var typeLabel = companionCount > 0
+            ? $"{primaryExt} +{companionCount}"
+            : primaryExt;
+
+        return new TreeNode(
+            id,
+            baseName,
+            TreeNodeTypes.File,
+            false,
+            null,
+            new TreeNodeMetadata(null, typeLabel, null, null, null)
+        );
+    }
+
+    /// <summary>
+    /// Builds a tree node for a single non-grouped file.
+    /// </summary>
+    private TreeNode BuildSingleFileNode(string filePath, string rootPath)
     {
         var relativePath = System.IO.Path.GetRelativePath(rootPath, filePath);
         var name = System.IO.Path.GetFileName(filePath);
         var id = $"file:{relativePath.Replace(System.IO.Path.DirectorySeparatorChar, '/')}";
-
-        // Get file extension for metadata
         var extension = System.IO.Path.GetExtension(filePath).TrimStart('.');
 
         return new TreeNode(
             id,
             name,
             TreeNodeTypes.File,
-            false, // Files don't have children
+            false,
             null,
             new TreeNodeMetadata(null, extension, null, null, null)
         );
