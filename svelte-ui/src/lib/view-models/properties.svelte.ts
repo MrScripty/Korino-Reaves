@@ -35,6 +35,14 @@ class PropertiesVM {
         this.editingPath = null;
     }
 
+    resetProperty(path: string[]): void {
+        ipc.send({
+            type: 'property',
+            action: 'reset',
+            payload: { path },
+        });
+    }
+
     addProperty(parentPath: string[], type: string, name: string): void {
         ipc.send({
             type: 'property',
@@ -125,7 +133,12 @@ ipc.onAction<{ selectedId: string | null }>('selection', 'update', (payload) => 
         properties.nodePath = null;
         properties.expandedPaths = [];
         properties.editingPath = null;
+        properties.isLoading = false;
     }
+    // Note: Do NOT set isLoading=true here. Due to event ordering,
+    // property:update (from SelectionChanged handler) arrives BEFORE
+    // this selection:update (the handler response). Setting isLoading=true
+    // would overwrite already-received property data.
 });
 
 ipc.onAction('asset', 'closed', () => {

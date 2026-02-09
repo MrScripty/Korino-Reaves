@@ -143,6 +143,10 @@ export interface PropertyValue {
     displayName?: string;
     /** Type-specific metadata */
     metadata?: PropertyMetadata;
+    /** Whether this property has been edited from its original value */
+    isEdited?: boolean;
+    /** Child properties for container types (struct, array, map) */
+    children?: PropertyValue[];
 }
 
 /**

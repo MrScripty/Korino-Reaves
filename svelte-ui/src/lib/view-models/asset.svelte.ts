@@ -90,7 +90,7 @@ export const asset = new AssetVM();
 // IPC Listeners
 // =============================================================================
 
-ipc.onAction<AssetInfo>('asset', 'loaded', (payload) => {
+ipc.onAction<AssetInfo>('asset', 'opened', (payload) => {
     asset.assetInfo = payload;
     asset.isLoading = false;
     asset.error = null;

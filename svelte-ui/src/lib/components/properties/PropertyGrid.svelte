@@ -7,6 +7,7 @@
 <script lang="ts">
     import PropertyRow from './PropertyRow.svelte';
     import { properties } from '$lib/view-models/properties.svelte';
+    import type { PropertyValue } from '$lib/bridge/types';
 
     interface Props {
         /** Optional CSS class */
@@ -14,6 +15,26 @@
     }
 
     let { class: className = '' }: Props = $props();
+
+    function flattenProperties(
+        props: PropertyValue[],
+        expandedPaths: string[],
+        depth = 0
+    ): Array<{ property: PropertyValue; depth: number }> {
+        const result: Array<{ property: PropertyValue; depth: number }> = [];
+        for (const prop of props) {
+            const key = prop.path.join('.');
+            result.push({ property: prop, depth });
+            if (prop.children?.length && expandedPaths.includes(key)) {
+                result.push(...flattenProperties(prop.children, expandedPaths, depth + 1));
+            }
+        }
+        return result;
+    }
+
+    let flatList = $derived(
+        flattenProperties(properties.properties, properties.expandedPaths)
+    );
 </script>
 
 <div class="property-grid {className}">
@@ -33,8 +54,8 @@
         </div>
     {:else}
         <div class="properties-list">
-            {#each properties.properties as property (properties.pathToKey(property.path))}
-                <PropertyRow {property} />
+            {#each flatList as { property, depth } (properties.pathToKey(property.path))}
+                <PropertyRow {property} {depth} />
             {/each}
         </div>
     {/if}

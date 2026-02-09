@@ -3,6 +3,7 @@
 
     Single property row with name and value editor.
     Uses appropriate editor based on property type.
+    Shows reset button for properties with saved edits.
 -->
 <script lang="ts">
     import type { PropertyValue } from '$lib/bridge/types';
@@ -23,9 +24,13 @@
     let { property, depth = 0 }: Props = $props();
 
     let isEditing = $derived(properties.isEditing(property.path));
+    let isEdited = $derived(property.isEdited === true);
     let valueColor = $derived(
         PROPERTY_TYPE_COLORS[property.type] || 'var(--text-primary)'
     );
+    let hasChildren = $derived(!!property.children?.length);
+    let pathKey = $derived(properties.pathToKey(property.path));
+    let isExpanded = $derived(properties.isPropertyExpanded(pathKey));
 
     // Display name is last segment of path
     let displayName = $derived(
@@ -45,15 +50,49 @@
     function handleCancel() {
         properties.cancelEditing();
     }
+
+    function handleReset() {
+        properties.resetProperty(property.path);
+    }
 </script>
 
 <div
     class="property-row"
     class:editable={property.editable}
+    class:edited={isEdited}
     style="padding-left: {depth * 16 + 8}px"
 >
-    <div class="property-name" title={property.path.join(' / ')}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="property-name"
+        class:has-children={hasChildren}
+        class:expanded={isExpanded}
+        title={property.path.join(' / ')}
+        onclick={() => hasChildren && properties.togglePropertyExpand(pathKey)}
+    >
+        <span class="icon" style="color: {valueColor}">
+            {#if property.type === 'struct' || property.type === 'object'}
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3 3h10v2H3V3zm0 4h10v2H3V7zm0 4h10v2H3v-2z" />
+                </svg>
+            {:else if property.type === 'array' || property.type === 'set'}
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 3h2v10H4V3zm6 0h2v10h-2V3z" />
+                </svg>
+            {:else if property.type === 'map'}
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="2" y="2" width="12" height="12" rx="2" />
+                </svg>
+            {:else}
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="8" cy="8" r="3" />
+                </svg>
+            {/if}
+        </span>
         {displayName}
+        {#if isEdited}
+            <span class="edit-badge" title="Modified from original value"></span>
+        {/if}
     </div>
 
     <div class="property-value" style="color: {valueColor}">
@@ -109,6 +148,18 @@
             >
                 {formatValue(property.value)}
             </button>
+
+            {#if isEdited}
+                <button
+                    class="reset-button"
+                    onclick={handleReset}
+                    title="Reset to original value"
+                >
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+                        <path d="M2 8a6 6 0 1 1 1.76 4.24l1.42-1.42A4 4 0 1 0 4 8h2L3 11 0 8h2z" />
+                    </svg>
+                </button>
+            {/if}
         {/if}
     </div>
 </div>
@@ -122,19 +173,42 @@
         if (typeof value === 'string') return value.length > 50 ? value.slice(0, 50) + '...' : value;
         if (Array.isArray(value)) return `[${value.length} items]`;
         if (typeof value === 'object') {
+            const obj = value as Record<string, unknown>;
+            const keys = Object.keys(obj);
             // Handle vector-like objects
-            if ('x' in value && 'y' in value) {
-                const v = value as { x: number; y: number; z?: number; w?: number };
+            if ('x' in obj && 'y' in obj) {
+                const v = obj as { x: number; y: number; z?: number; w?: number };
                 if ('w' in v) return `(${v.x}, ${v.y}, ${v.z}, ${v.w})`;
                 if ('z' in v) return `(${v.x}, ${v.y}, ${v.z})`;
                 return `(${v.x}, ${v.y})`;
             }
             // Handle color-like objects
-            if ('r' in value && 'g' in value && 'b' in value) {
-                const c = value as { r: number; g: number; b: number; a?: number };
+            if ('r' in obj && 'g' in obj && 'b' in obj) {
+                const c = obj as { r: number; g: number; b: number; a?: number };
                 if ('a' in c) return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`;
                 return `rgb(${c.r}, ${c.g}, ${c.b})`;
             }
+            // Handle resolved object references
+            if ('Name' in obj && 'RefType' in obj) {
+                const ref = obj as { Name: string; Class?: string; RefType: string };
+                if (ref.Class) return `${ref.Name} (${ref.Class})`;
+                return ref.Name;
+            }
+            // Handle soft object references
+            if ('AssetPath' in obj) {
+                const soft = obj as { AssetPath: string; SubPath?: string };
+                if (soft.SubPath) return `${soft.AssetPath}:${soft.SubPath}`;
+                return soft.AssetPath || 'None';
+            }
+            // Handle struct summary {Type, PropertyCount}
+            if ('Type' in obj && 'PropertyCount' in obj) {
+                return `${obj.Type}`;
+            }
+            // Generic small object: show key-value pairs
+            if (keys.length > 0 && keys.length <= 4) {
+                return keys.map((k) => `${k}: ${obj[k]}`).join(', ');
+            }
+            if (keys.length > 4) return `{${keys.length} fields}`;
             return '{...}';
         }
         return String(value);
@@ -157,6 +231,9 @@
     }
 
     .property-name {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
         font-size: var(--text-sm);
         color: var(--text-secondary);
         overflow: hidden;
@@ -164,15 +241,57 @@
         white-space: nowrap;
     }
 
+    .property-name.has-children {
+        cursor: pointer;
+    }
+
+    .icon {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity var(--transition-fast);
+    }
+
+    .icon svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .property-name.has-children .icon {
+        opacity: 0.4;
+    }
+
+    .property-name.has-children.expanded .icon {
+        opacity: 1;
+    }
+
+    .property-row.edited .property-name {
+        color: var(--color-warning, #f59e0b);
+    }
+
+    .edit-badge {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--color-warning, #f59e0b);
+        flex-shrink: 0;
+    }
+
     .property-value {
+        display: flex;
+        align-items: center;
+        gap: 4px;
         font-family: var(--font-mono);
         font-size: var(--text-sm);
         overflow: hidden;
     }
 
     .value-display {
-        display: block;
-        width: 100%;
+        flex: 1;
+        min-width: 0;
         text-align: left;
         background: transparent;
         border: none;
@@ -196,5 +315,31 @@
 
     .readonly-value {
         opacity: 0.8;
+    }
+
+    .reset-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        padding: 0;
+        border: none;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        flex-shrink: 0;
+        opacity: 0;
+        transition: opacity var(--transition-fast);
+    }
+
+    .property-row:hover .reset-button {
+        opacity: 1;
+    }
+
+    .reset-button:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
 </style>
