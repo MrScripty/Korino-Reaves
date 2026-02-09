@@ -18,6 +18,7 @@ class TreeVM {
     });
     isLoading = $state(false);
     filterQuery = $state('');
+    editedFilePaths = $state<Set<string>>(new Set());
 
     get selectedNode(): TreeNode | null {
         if (!this.selection.selectedId) return null;
@@ -99,12 +100,25 @@ class TreeVM {
         });
     }
 
+    openInFileBrowser(id: string): void {
+        ipc.send({
+            type: 'tree',
+            action: 'openInFileBrowser',
+            payload: { id },
+        });
+    }
+
     isExpanded(id: string): boolean {
         return this.selection.expandedIds.includes(id);
     }
 
     isSelected(id: string): boolean {
         return this.selection.selectedId === id;
+    }
+
+    isFileEdited(fileId: string): boolean {
+        const relativePath = fileId.startsWith('file:') ? fileId.substring(5) : fileId;
+        return this.editedFilePaths.has(relativePath);
     }
 
     flattenTree(
@@ -162,6 +176,12 @@ ipc.onAction('project', 'closed', () => {
     tree.nodes = [];
     tree.selection = { selectedId: null, expandedIds: [] };
     tree.filterQuery = '';
+    tree.editedFilePaths = new Set();
+});
+
+// Track which files have property edits
+ipc.onAction<{ files: string[] }>('property', 'editedFiles', (payload) => {
+    tree.editedFilePaths = new Set(payload.files);
 });
 
 // Handle full tree update from project open (with nodes wrapper)

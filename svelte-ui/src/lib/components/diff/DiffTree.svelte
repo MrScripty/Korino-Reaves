@@ -75,11 +75,9 @@
 
     function handleNodeClick(nodeId: string, hasChildren: boolean) {
         onSelect?.(nodeId);
-    }
-
-    function handleExpandClick(e: MouseEvent, nodeId: string) {
-        e.stopPropagation();
-        onToggle?.(nodeId);
+        if (hasChildren) {
+            onToggle?.(nodeId);
+        }
     }
 </script>
 
@@ -105,27 +103,8 @@
                 <span class="change-marker" style="background: {markerColor}"></span>
             {/if}
 
-            <!-- Expander -->
-            <span
-                class="expander"
-                onclick={(e) => handleExpandClick(e, node.id)}
-                role="button"
-                tabindex="0"
-            >
-                {#if node.hasChildren}
-                    <svg viewBox="0 0 16 16" fill="currentColor">
-                        <path
-                            d="M6 4l4 4-4 4"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            fill="none"
-                        />
-                    </svg>
-                {/if}
-            </span>
-
-            <!-- Icon -->
-            <span class="icon" style="color: {nodeColor}">
+            <!-- Icon (expand indicator for parents) -->
+            <span class="icon" class:has-children={node.hasChildren} class:expanded={isExpanded} style="color: {nodeColor}">
                 {#if node.type === 'export'}
                     <svg viewBox="0 0 16 16" fill="currentColor">
                         <rect x="2" y="2" width="12" height="12" rx="2" />
@@ -224,39 +203,24 @@
         width: 3px;
     }
 
-    .expander {
-        width: 16px;
-        height: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        color: var(--text-muted);
-        margin-left: var(--space-1);
-    }
-
-    .expander:hover {
-        color: var(--text-primary);
-    }
-
-    .expander svg {
-        width: 10px;
-        height: 10px;
-        transition: transform var(--transition-fast);
-    }
-
-    .tree-node.expanded .expander svg {
-        transform: rotate(90deg);
-    }
-
     .icon {
         width: 16px;
         height: 16px;
+        margin-left: var(--space-1);
         margin-right: var(--space-1);
         flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: center;
+        transition: opacity var(--transition-fast);
+    }
+
+    .icon.has-children {
+        opacity: 0.4;
+    }
+
+    .icon.has-children.expanded {
+        opacity: 1;
     }
 
     .icon svg {

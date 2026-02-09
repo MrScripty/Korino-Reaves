@@ -14,13 +14,16 @@
         node: TreeNodeType;
         /** Nesting depth */
         depth?: number;
+        /** Right-click context menu callback */
+        onContextMenu?: (node: TreeNodeType, event: MouseEvent) => void;
     }
 
-    let { node, depth = 0 }: Props = $props();
+    let { node, depth = 0, onContextMenu }: Props = $props();
 
     // Derived from view model state
     let isExpanded = $derived(tree.isExpanded(node.id));
     let isSelected = $derived(tree.isSelected(node.id));
+    let isEdited = $derived(node.type === 'file' && tree.isFileEdited(node.id));
 
     // Get color for node type
     let nodeColor = $derived(TREE_NODE_TYPE_COLORS[node.type] || 'var(--text-primary)');
@@ -28,18 +31,15 @@
     function handleClick(event: MouseEvent) {
         event.stopPropagation();
         tree.selectNode(node.id);
-    }
-
-    function handleDoubleClick(event: MouseEvent) {
-        event.stopPropagation();
         if (node.hasChildren) {
             tree.toggleExpand(node.id);
         }
     }
 
-    function handleExpandClick(event: MouseEvent) {
+    function handleContextMenu(event: MouseEvent) {
+        event.preventDefault();
         event.stopPropagation();
-        tree.toggleExpand(node.id);
+        onContextMenu?.(node, event);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -61,30 +61,17 @@
     class:selected={isSelected}
     class:expanded={isExpanded}
     class:has-children={node.hasChildren}
+    class:edited={isEdited}
     style="padding-left: {depth * TREE.INDENT_SIZE + TREE.INDENT_SIZE / 2}px"
     role="treeitem"
     aria-selected={isSelected}
     aria-expanded={node.hasChildren ? isExpanded : undefined}
     tabindex={isSelected ? 0 : -1}
     onclick={handleClick}
-    ondblclick={handleDoubleClick}
+    oncontextmenu={handleContextMenu}
     onkeydown={handleKeyDown}
 >
-    <!-- Expand/Collapse button -->
-    <span class="expander" onclick={handleExpandClick}>
-        {#if node.hasChildren}
-            <svg viewBox="0 0 16 16" fill="currentColor">
-                <path
-                    d="M6 4l4 4-4 4"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    fill="none"
-                />
-            </svg>
-        {/if}
-    </span>
-
-    <!-- Node icon (based on type) -->
+    <!-- Node icon (expand indicator for parents) -->
     <span class="icon" style="color: {nodeColor}">
         {#if node.type === 'export'}
             <svg viewBox="0 0 16 16" fill="currentColor">
@@ -113,6 +100,11 @@
     <span class="name" style="color: {nodeColor}">
         {node.name}
     </span>
+
+    <!-- Edit indicator for files with property edits -->
+    {#if isEdited}
+        <span class="edit-indicator" title="Has property edits"></span>
+    {/if}
 
     <!-- Value preview (if available) -->
     {#if node.metadata?.valuePreview}
@@ -154,30 +146,6 @@
         color: white !important;
     }
 
-    .expander {
-        width: 16px;
-        height: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        color: var(--text-muted);
-    }
-
-    .expander:hover {
-        color: var(--text-primary);
-    }
-
-    .expander svg {
-        width: 10px;
-        height: 10px;
-        transition: transform var(--transition-fast);
-    }
-
-    .tree-node.expanded .expander svg {
-        transform: rotate(90deg);
-    }
-
     .icon {
         width: 16px;
         height: 16px;
@@ -186,6 +154,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        transition: opacity var(--transition-fast);
+    }
+
+    .tree-node.has-children .icon {
+        opacity: 0.4;
+    }
+
+    .tree-node.has-children.expanded .icon {
+        opacity: 1;
     }
 
     .icon svg {
@@ -217,5 +194,18 @@
         font-size: var(--text-xs);
         margin-left: var(--space-1);
         opacity: 0.7;
+    }
+
+    .edit-indicator {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-warning, #f59e0b);
+        margin-left: var(--space-1);
+        flex-shrink: 0;
+    }
+
+    .tree-node.edited .name {
+        font-style: italic;
     }
 </style>

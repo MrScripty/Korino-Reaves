@@ -7,6 +7,8 @@
 -->
 <script lang="ts">
     import TreeNode from './TreeNode.svelte';
+    import ContextMenu, { type ContextMenuItem } from '$lib/components/common/ContextMenu.svelte';
+    import type { TreeNode as TreeNodeType } from '$lib/bridge/types';
     import { tree } from '$lib/view-models/tree.svelte';
     import { TREE } from '$lib/constants';
 
@@ -46,6 +48,35 @@
     let isDragging = $state(false);
     let dragStartY = $state(0);
     let dragStartScrollTop = $state(0);
+
+    // Context menu state
+    let contextMenuVisible = $state(false);
+    let contextMenuX = $state(0);
+    let contextMenuY = $state(0);
+    let contextMenuNodeId = $state<string | null>(null);
+
+    const contextMenuItems: ContextMenuItem[] = [
+        { id: 'openInFileBrowser', label: 'Open in File Browser' },
+    ];
+
+    function handleNodeContextMenu(node: TreeNodeType, event: MouseEvent) {
+        if (node.type !== 'file' && node.type !== 'folder') return;
+        contextMenuX = event.clientX;
+        contextMenuY = event.clientY;
+        contextMenuNodeId = node.id;
+        contextMenuVisible = true;
+    }
+
+    function handleContextMenuSelect(itemId: string) {
+        if (itemId === 'openInFileBrowser' && contextMenuNodeId) {
+            tree.openInFileBrowser(contextMenuNodeId);
+        }
+        contextMenuVisible = false;
+    }
+
+    function handleContextMenuClose() {
+        contextMenuVisible = false;
+    }
 
     let showScrollbar = $derived(totalHeight > containerHeight);
     let maxScroll = $derived(totalHeight - containerHeight);
@@ -188,12 +219,21 @@
                     style="transform: translateY({offsetY}px)"
                 >
                     {#each visibleNodes as { node, depth } (node.id)}
-                        <TreeNode {node} {depth} />
+                        <TreeNode {node} {depth} onContextMenu={handleNodeContextMenu} />
                     {/each}
                 </div>
             </div>
         {/if}
     </div>
+
+    <ContextMenu
+        items={contextMenuItems}
+        x={contextMenuX}
+        y={contextMenuY}
+        bind:visible={contextMenuVisible}
+        onSelect={handleContextMenuSelect}
+        onClose={handleContextMenuClose}
+    />
 
     {#if showScrollbar}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
