@@ -6,11 +6,13 @@ const config = {
     preprocess: vitePreprocess(),
 
     kit: {
+        paths: {
+            relative: true
+        },
         adapter: adapter({
             // Build to dist for CEF
             pages: 'dist',
             assets: 'dist',
-            fallback: 'index.html',
             precompress: false,
             strict: true
         }),
