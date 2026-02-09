@@ -43,6 +43,11 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" />
   </ItemGroup>
 
+  <!-- Data Persistence -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.1" />
+  </ItemGroup>
+
   <!-- AI Agent Framework -->
   <ItemGroup>
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.32.0" />
