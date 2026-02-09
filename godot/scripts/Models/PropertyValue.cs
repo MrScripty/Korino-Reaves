@@ -59,5 +59,7 @@ public record PropertyValue(
     [property: JsonPropertyName("value")] object? Value,
     [property: JsonPropertyName("editable")] bool Editable,
     [property: JsonPropertyName("displayName")] string? DisplayName = null,
-    [property: JsonPropertyName("metadata")] PropertyMetadata? Metadata = null
+    [property: JsonPropertyName("metadata")] PropertyMetadata? Metadata = null,
+    [property: JsonPropertyName("isEdited")] bool IsEdited = false,
+    [property: JsonPropertyName("children")] PropertyValue[]? Children = null
 );

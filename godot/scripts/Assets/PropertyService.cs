@@ -67,7 +67,7 @@ public sealed class PropertyService
         foreach (var prop in normalExport.Data)
         {
             var path = new[] { nodeId, prop.Name.Value.Value };
-            properties.Add(ConvertPropertyToValue(prop, path));
+            properties.Add(ConvertPropertyToValue(prop, path, asset));
         }
 
         return properties.ToArray();
@@ -87,7 +87,7 @@ public sealed class PropertyService
             throw new PropertyNotFoundException(path);
         }
 
-        return ExtractValue(property);
+        return ExtractValue(property, asset);
     }
 
     /// <summary>
@@ -185,13 +185,14 @@ public sealed class PropertyService
         };
     }
 
-    private PropertyValue ConvertPropertyToValue(PropertyData property, string[] path)
+    private PropertyValue ConvertPropertyToValue(PropertyData property, string[] path, UAsset asset)
     {
         var type = MapPropertyType(property);
-        var value = ExtractValue(property);
+        var value = ExtractValue(property, asset);
         var displayName = property.Name.Value.Value;
         var editable = IsEditable(property);
         var metadata = BuildMetadata(property);
+        var children = ExtractChildren(property, path, asset);
 
         return new PropertyValue(
             Path: path,
@@ -199,8 +200,88 @@ public sealed class PropertyService
             Value: value,
             Editable: editable,
             DisplayName: displayName,
-            Metadata: metadata
+            Metadata: metadata,
+            Children: children
         );
+    }
+
+    private PropertyValue[]? ExtractChildren(PropertyData property, string[] parentPath, UAsset asset)
+    {
+        switch (property)
+        {
+            case StructPropertyData structProp:
+            {
+                // Skip special struct types that have dedicated editors
+                var structType = structProp.StructType.Value.Value;
+                if (structType is "Vector" or "Vector2D" or "Vector4" or "Rotator"
+                    or "Color" or "LinearColor" or "Guid")
+                    return null;
+
+                if (structProp.Value.Count == 0)
+                    return null;
+
+                var children = new PropertyValue[structProp.Value.Count];
+                for (int i = 0; i < structProp.Value.Count; i++)
+                {
+                    var child = structProp.Value[i];
+                    var childPath = new string[parentPath.Length + 1];
+                    Array.Copy(parentPath, childPath, parentPath.Length);
+                    childPath[parentPath.Length] = child.Name.Value.Value;
+                    children[i] = ConvertPropertyToValue(child, childPath, asset);
+                }
+                return children;
+            }
+
+            case ArrayPropertyData arrayProp:
+            {
+                if (arrayProp.Value.Length == 0)
+                    return null;
+
+                var children = new PropertyValue[arrayProp.Value.Length];
+                for (int i = 0; i < arrayProp.Value.Length; i++)
+                {
+                    var element = arrayProp.Value[i];
+                    var childPath = new string[parentPath.Length + 1];
+                    Array.Copy(parentPath, childPath, parentPath.Length);
+                    childPath[parentPath.Length] = i.ToString();
+                    children[i] = ConvertPropertyToValue(element, childPath, asset) with
+                    {
+                        DisplayName = $"[{i}]"
+                    };
+                }
+                return children;
+            }
+
+            case MapPropertyData mapProp:
+            {
+                if (mapProp.Value.Count == 0)
+                    return null;
+
+                var children = new List<PropertyValue>();
+                int entryIndex = 0;
+                foreach (var kvp in mapProp.Value)
+                {
+                    var entryPath = new string[parentPath.Length + 1];
+                    Array.Copy(parentPath, entryPath, parentPath.Length);
+                    entryPath[parentPath.Length] = entryIndex.ToString();
+
+                    // Extract key display string
+                    var keyDisplay = ExtractValue(kvp.Key, asset)?.ToString() ?? entryIndex.ToString();
+
+                    // Convert value as the child, using key as display name
+                    var valueChild = ConvertPropertyToValue(kvp.Value, entryPath, asset) with
+                    {
+                        DisplayName = keyDisplay
+                    };
+                    children.Add(valueChild);
+                    entryIndex++;
+                }
+                return children.ToArray();
+            }
+
+            default:
+                return null;
+        }
     }
 
     private static string MapPropertyType(PropertyData property)
@@ -241,7 +322,7 @@ public sealed class PropertyService
         };
     }
 
-    private static object? ExtractValue(PropertyData property)
+    private static object? ExtractValue(PropertyData property, UAsset asset)
     {
         return property switch
         {
@@ -268,12 +349,12 @@ public sealed class PropertyService
 
             EnumPropertyData enumProp => enumProp.Value.Value.Value,
 
-            ObjectPropertyData objProp => new
-            {
-                Index = objProp.Value.Index,
-                IsExport = objProp.Value.IsExport(),
-                IsImport = objProp.Value.IsImport()
-            },
+            ObjectPropertyData objProp when objProp.Value.Index == 0 => "None",
+            ObjectPropertyData objProp when objProp.Value.IsImport() =>
+                ResolveImportRef(objProp.Value, asset),
+            ObjectPropertyData objProp when objProp.Value.IsExport() =>
+                ResolveExportRef(objProp.Value, asset),
+            ObjectPropertyData objProp => new { Name = $"Unknown (index: {objProp.Value.Index})", RefType = "unknown" },
 
             SoftObjectPropertyData softObjProp => new
             {
@@ -288,6 +369,41 @@ public sealed class PropertyService
 
             _ => null
         };
+    }
+
+    private static object ResolveImportRef(FPackageIndex index, UAsset asset)
+    {
+        try
+        {
+            var import = index.ToImport(asset);
+            return new
+            {
+                Name = import.ObjectName.Value.Value,
+                Class = import.ClassName.Value.Value,
+                RefType = "import"
+            };
+        }
+        catch
+        {
+            return new { Name = $"Invalid (index: {index.Index})", RefType = "import" };
+        }
+    }
+
+    private static object ResolveExportRef(FPackageIndex index, UAsset asset)
+    {
+        try
+        {
+            var export = index.ToExport(asset);
+            return new
+            {
+                Name = export.ObjectName.Value.Value,
+                RefType = "export"
+            };
+        }
+        catch
+        {
+            return new { Name = $"Invalid (index: {index.Index})", RefType = "export" };
+        }
     }
 
     private static object? ExtractStructValue(StructPropertyData structProp)
@@ -344,7 +460,7 @@ public sealed class PropertyService
             }
         }
 
-        return new { X = x, Y = y, Z = z };
+        return new Dictionary<string, object> { ["x"] = x, ["y"] = y, ["z"] = z };
     }
 
     private static object ExtractVector2DFromProperties(List<PropertyData> props)
@@ -364,7 +480,7 @@ public sealed class PropertyService
             }
         }
 
-        return new { X = x, Y = y };
+        return new Dictionary<string, object> { ["x"] = x, ["y"] = y };
     }
 
     private static object ExtractRotatorFromProperties(List<PropertyData> props)
@@ -385,7 +501,7 @@ public sealed class PropertyService
             }
         }
 
-        return new { Pitch = pitch, Yaw = yaw, Roll = roll };
+        return new Dictionary<string, object> { ["x"] = pitch, ["y"] = yaw, ["z"] = roll };
     }
 
     private static object ExtractColorFromProperties(List<PropertyData> props)
@@ -407,7 +523,7 @@ public sealed class PropertyService
             }
         }
 
-        return new { R = r, G = g, B = b, A = a };
+        return new Dictionary<string, object> { ["r"] = (int)r, ["g"] = (int)g, ["b"] = (int)b, ["a"] = (int)a };
     }
 
     private static object ExtractLinearColorFromProperties(List<PropertyData> props)
@@ -429,7 +545,7 @@ public sealed class PropertyService
             }
         }
 
-        return new { R = r, G = g, B = b, A = a };
+        return new Dictionary<string, object> { ["r"] = r, ["g"] = g, ["b"] = b, ["a"] = a };
     }
 
     private static object ExtractGuidFromProperties(List<PropertyData> props)
@@ -451,15 +567,24 @@ public sealed class PropertyService
             }
         }
 
-        return new Guid((int)a, (short)(b >> 16), (short)(b & 0xFFFF),
+        var guid = new Guid((int)a, (short)(b >> 16), (short)(b & 0xFFFF),
             (byte)(c >> 24), (byte)((c >> 16) & 0xFF), (byte)((c >> 8) & 0xFF), (byte)(c & 0xFF),
             (byte)(d >> 24), (byte)((d >> 16) & 0xFF), (byte)((d >> 8) & 0xFF), (byte)(d & 0xFF));
+        return guid.ToString();
     }
 
     private static bool IsEditable(PropertyData property)
     {
-        // Most properties are editable except complex nested types
-        return property is not (ArrayPropertyData or MapPropertyData);
+        if (property is StructPropertyData structProp)
+        {
+            // Allow editing for struct types that have frontend editors
+            var structType = structProp.StructType.Value.Value;
+            return structType is "Vector" or "Vector2D" or "Vector4" or "Rotator"
+                or "Color" or "LinearColor";
+        }
+
+        // Container types (array, map, set) have no editor
+        return property is not (ArrayPropertyData or MapPropertyData or SetPropertyData);
     }
 
     private PropertyMetadata? BuildMetadata(PropertyData property)

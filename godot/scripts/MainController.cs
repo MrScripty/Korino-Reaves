@@ -7,11 +7,15 @@
 // - Input forwarding
 
 using System;
+using System.Threading.Tasks;
 using Godot;
+using UAssetAPI.UnrealTypes;
 using UAssetViewer.Assets;
 using UAssetViewer.Bridge;
 using UAssetViewer.Bridge.Handlers;
+using UAssetViewer.Data;
 using UAssetViewer.Infrastructure;
+using UAssetViewer.Models;
 using UAssetViewer.Rendering;
 
 namespace UAssetViewer;
@@ -31,6 +35,7 @@ public partial class MainController : Node
 
     private IAppLogger _logger = null!;
     private AssetManager? _assetManager;
+    private EditDatabase? _editDatabase;
     private Node? _cefNode;
     private IpcDispatcher? _dispatcher;
     private PreviewManager? _previewManager;
@@ -262,15 +267,57 @@ public partial class MainController : Node
 
         // Create AssetManager for handling asset operations
         _assetManager = new AssetManager(_logger);
+        _editDatabase = new EditDatabase(_logger);
 
         _dispatcher = new IpcDispatcher(_logger, _assetManager);
         _dispatcher.RegisterDefaultHandlers();
         _dispatcher.RegisterDialogHandler(this);
 
+        // Register PropertyHandler with edit database and dispatcher
+        var propertyHandler = new PropertyHandler(_logger, _assetManager, _editDatabase, _dispatcher);
+        _dispatcher.RegisterHandler(propertyHandler);
+
         // Create preview manager and viewport handler (depends on dispatcher having handlers)
         _previewManager = new PreviewManager(_logger, _dispatcher);
         _previewManager.Initialize(this);
         _dispatcher.RegisterHandler(new ViewportHandler(_logger, _previewManager));
+
+        // Open/close edit database when project opens/closes
+        var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
+        if (projectHandler != null)
+        {
+            projectHandler.ProjectOpened += (project) =>
+            {
+                _editDatabase!.Open(project.Path);
+                propertyHandler.PushEditedFiles();
+            };
+
+            projectHandler.ProjectClosed += () =>
+            {
+                _editDatabase!.Close();
+            };
+        }
+
+        // Auto-load assets and push properties when selection changes
+        var selectionHandler = _dispatcher.GetHandler<SelectionHandler>();
+        if (selectionHandler != null)
+        {
+            selectionHandler.SelectionChanged += (state) =>
+            {
+                if (state.SelectedId == null) return;
+
+                if (IsAssetFileNode(state.SelectedId))
+                {
+                    // Auto-load .uasset files when selected in the project tree
+                    _ = AutoLoadAssetAsync(state.SelectedId, propertyHandler);
+                }
+                else
+                {
+                    propertyHandler.PushPropertiesForNode(state.SelectedId, _dispatcher!);
+                }
+            };
+            _logger.Info("Selection auto-load and property push subscribed to SelectionChanged");
+        }
 
         _dispatcher.Connect(_cefNode);
     }
@@ -368,10 +415,106 @@ public partial class MainController : Node
         return flags;
     }
 
+    private static bool IsAssetFileNode(string nodeId)
+    {
+        return nodeId.StartsWith("file:") &&
+               (nodeId.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase) ||
+                nodeId.EndsWith(".umap", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Finds the export with the most properties to display.
+    /// For textures/meshes export-0 is the main asset, but for Blueprints
+    /// export-0 is the class definition (few/no properties) and export-1 is
+    /// the CDO with actual property values.
+    /// </summary>
+    private string FindBestExportForProperties()
+    {
+        var asset = _assetManager?.CurrentUAsset;
+        if (asset == null) return "export-0";
+
+        string best = "export-0";
+        int bestCount = 0;
+
+        for (int i = 0; i < asset.Exports.Count; i++)
+        {
+            if (asset.Exports[i] is UAssetAPI.ExportTypes.NormalExport normal && normal.Data.Count > bestCount)
+            {
+                bestCount = normal.Data.Count;
+                best = $"export-{i}";
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// Maps a CUE4Parse EGame name to UAssetAPI EngineVersion.
+    /// EGame uses "GAME_UE4_22" format, EngineVersion uses "VER_UE4_22" format.
+    /// </summary>
+    private static EngineVersion? MapEGameToEngineVersion(string eGameName)
+    {
+        var versionName = eGameName.Replace("GAME_", "VER_");
+        if (Enum.TryParse<EngineVersion>(versionName, out var version))
+            return version;
+        return null;
+    }
+
+    private async Task AutoLoadAssetAsync(string fileNodeId, PropertyHandler propertyHandler)
+    {
+        try
+        {
+            var projectHandler = _dispatcher!.GetHandler<ProjectHandler>();
+            if (projectHandler?.CurrentProject == null)
+            {
+                _logger.Warning("Cannot auto-load asset: no project open");
+                return;
+            }
+
+            var relativePath = fileNodeId.Substring(5); // Remove "file:" prefix
+            var fullPath = System.IO.Path.Combine(projectHandler.CurrentProject.Path, relativePath);
+
+            if (!System.IO.File.Exists(fullPath))
+            {
+                _logger.Warning("Asset file not found: {Path}", fullPath);
+                return;
+            }
+
+            _logger.Info("Auto-loading asset: {Path}", fullPath);
+
+            // Map the project's EGame version to UAssetAPI EngineVersion
+            var engineVersion = MapEGameToEngineVersion(projectHandler.EffectiveGameVersion.ToString());
+            var assetInfo = await _assetManager!.LoadAsync(fullPath, engineVersion);
+
+            // Set file path for edit tracking and reapply saved edits
+            propertyHandler.SetCurrentFilePath(relativePath);
+            propertyHandler.ReapplyEdits();
+
+            // Notify frontend of loaded asset
+            _dispatcher.Send(MessageTypes.Asset, "opened", assetInfo);
+
+            // Push properties for the best export to the Properties panel.
+            // For textures/meshes export-0 has the data, but for Blueprints
+            // the first export is the class definition (empty) and the CDO
+            // (export-1) holds the actual property values.
+            var bestExport = FindBestExportForProperties();
+            propertyHandler.PushPropertiesForNode(bestExport, _dispatcher);
+
+            _logger.Info("Asset auto-loaded: {File}", assetInfo.FileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to auto-load asset: {Id}", fileNodeId);
+            _dispatcher!.Send(MessageTypes.Asset, "error",
+                new { message = $"Failed to load asset: {ex.Message}" });
+        }
+    }
+
     private void Cleanup()
     {
         _logger.Info("Cleaning up...");
 
+        _editDatabase?.Dispose();
         _previewManager?.Dispose();
         _dispatcher?.Dispose();
 
