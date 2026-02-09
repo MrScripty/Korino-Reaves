@@ -72,6 +72,19 @@
             onwheel={handleWheel}
             ondblclick={handleDblClick}
         />
+        <!-- 3D toolbar overlay -->
+        {#if viewport.is3D}
+            <div class="toolbar-overlay">
+                <button
+                    class="toolbar-btn"
+                    class:active={viewport.doubleSided}
+                    title={viewport.doubleSided ? 'Double-Sided (click for Single-Sided)' : 'Single-Sided (click for Double-Sided)'}
+                    onclick={() => viewport.setDoubleSided(!viewport.doubleSided)}
+                >
+                    {viewport.doubleSided ? 'Double-Sided' : 'Single-Sided'}
+                </button>
+            </div>
+        {/if}
         <!-- Asset info overlay -->
         <div class="info-overlay">
             {#if viewport.assetName}
@@ -150,6 +163,35 @@
         background-size: 16px 16px;
         background-position: 0 0, 0 8px, 8px -8px, -8px 0;
         background-color: #222;
+    }
+
+    .toolbar-overlay {
+        position: absolute;
+        top: var(--space-2);
+        right: var(--space-2);
+        display: flex;
+        gap: var(--space-1);
+    }
+
+    .toolbar-btn {
+        padding: var(--space-1) var(--space-2);
+        background: rgba(0, 0, 0, 0.65);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        font-size: var(--text-xs);
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+    }
+
+    .toolbar-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        color: var(--text-primary);
+    }
+
+    .toolbar-btn.active {
+        color: var(--text-secondary);
+        border-color: var(--text-secondary);
     }
 
     .info-overlay {

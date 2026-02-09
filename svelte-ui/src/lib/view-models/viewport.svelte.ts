@@ -19,6 +19,7 @@ class ViewportVM {
 
     textureInfo = $state<{ width: number; height: number; format: string } | null>(null);
     meshInfo = $state<{ vertexCount: number; triangleCount: number; lodCount: number } | null>(null);
+    doubleSided = $state(true);
 
     get hasPreview(): boolean {
         return this.previewData !== null;
@@ -66,6 +67,15 @@ class ViewportVM {
             type: 'viewport',
             action: 'resetCamera',
             payload: {},
+        });
+    }
+
+    setDoubleSided(enabled: boolean): void {
+        this.doubleSided = enabled;
+        ipc.send({
+            type: 'viewport',
+            action: 'setDoubleSided',
+            payload: { enabled },
         });
     }
 }
