@@ -9,6 +9,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using UAssetAPI;
+using UAssetAPI.UnrealTypes;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
 using UAssetViewer.Services;
@@ -48,7 +49,7 @@ public sealed class AssetManager : IAssetService, ITreeService
     /// <summary>
     /// Loads an asset from the specified path.
     /// </summary>
-    public async Task<AssetInfo> LoadAsync(string path)
+    public async Task<AssetInfo> LoadAsync(string path, EngineVersion? version = null)
     {
         using var activity = ActivitySource.StartActivity("LoadAsset");
         activity?.SetTag("asset.path", path);
@@ -65,8 +66,8 @@ public sealed class AssetManager : IAssetService, ITreeService
                 // Load mappings if available
                 var mappings = await _mappingsManager.LoadMappingsForAssetAsync(path);
 
-                // Load the asset
-                _currentAsset = await _loader.LoadAsync(path, mappings);
+                // Load the asset with version from project if available
+                _currentAsset = await _loader.LoadAsync(path, mappings, version);
                 _currentPath = path;
                 _isModified = false;
 

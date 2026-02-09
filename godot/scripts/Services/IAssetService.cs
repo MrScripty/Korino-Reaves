@@ -4,6 +4,7 @@
 // Implementations will use UAssetAPI for actual operations.
 
 using System.Threading.Tasks;
+using UAssetAPI.UnrealTypes;
 using UAssetViewer.Models;
 
 namespace UAssetViewer.Services;
@@ -29,7 +30,7 @@ public interface IAssetService
     /// </summary>
     /// <param name="path">Path to the .uasset file</param>
     /// <returns>Asset information</returns>
-    Task<AssetInfo> LoadAsync(string path);
+    Task<AssetInfo> LoadAsync(string path, EngineVersion? version = null);
 
     /// <summary>
     /// Saves the current asset to its original path.

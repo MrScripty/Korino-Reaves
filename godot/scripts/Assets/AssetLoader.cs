@@ -34,15 +34,15 @@ public sealed class AssetLoader
     /// <param name="path">Path to the .uasset file</param>
     /// <param name="mappings">Optional .usmap mappings</param>
     /// <returns>The loaded UAsset</returns>
-    public Task<UAsset> LoadAsync(string path, Usmap? mappings = null)
+    public Task<UAsset> LoadAsync(string path, Usmap? mappings = null, EngineVersion? version = null)
     {
-        return Task.Run(() => Load(path, mappings));
+        return Task.Run(() => Load(path, mappings, version));
     }
 
     /// <summary>
     /// Loads an asset synchronously.
     /// </summary>
-    public UAsset Load(string path, Usmap? mappings = null)
+    public UAsset Load(string path, Usmap? mappings = null, EngineVersion? version = null)
     {
         using var activity = ActivitySource.StartActivity("Load");
         activity?.SetTag("asset.path", path);
@@ -56,22 +56,22 @@ public sealed class AssetLoader
 
         try
         {
-            // Try to detect engine version from file
-            var version = DetectEngineVersion(path);
-            activity?.SetTag("asset.version", version.ToString());
+            // Use provided version or fall back to detection heuristic
+            var effectiveVersion = version ?? DetectEngineVersion(path);
+            activity?.SetTag("asset.version", effectiveVersion.ToString());
 
-            _logger.Debug("Detected engine version: {Version}", version);
+            _logger.Debug("Using engine version: {Version}", effectiveVersion);
 
             // Create UAsset with mappings if provided
             UAsset asset;
             if (mappings != null)
             {
-                asset = new UAsset(path, version, mappings);
+                asset = new UAsset(path, effectiveVersion, mappings);
                 _logger.Debug("Loaded with mappings");
             }
             else
             {
-                asset = new UAsset(path, version);
+                asset = new UAsset(path, effectiveVersion);
             }
 
             // Handle .uexp file if present
@@ -207,25 +207,31 @@ public sealed class AssetLoader
 
             // Try to determine version from legacy version number
             // This is a simplified heuristic
+            // LegacyFileVersion indicates serialization format, not exact engine version:
+            // -8 and below = UE5 (has ObjectVersionUE5 field)
+            // -7 = UE4.26-4.27 (licensee versioning changes)
+            // -6 = UE4.14-4.25 (optimized custom version format)
+            // -5 = UE4.8-4.13 (graceful fail support)
+            // -4 and above = early UE4
             if (legacyFileVersion <= -8)
             {
                 return EngineVersion.VER_UE5_3;
             }
-            else if (legacyFileVersion <= -7)
-            {
-                return EngineVersion.VER_UE5_0;
-            }
-            else if (legacyFileVersion <= -6)
+            else if (legacyFileVersion == -7)
             {
                 return EngineVersion.VER_UE4_27;
             }
-            else if (legacyFileVersion <= -5)
+            else if (legacyFileVersion == -6)
             {
                 return EngineVersion.VER_UE4_25;
             }
+            else if (legacyFileVersion == -5)
+            {
+                return EngineVersion.VER_UE4_13;
+            }
             else
             {
-                return EngineVersion.VER_UE4_22;
+                return EngineVersion.VER_UE4_0;
             }
         }
         catch (Exception ex)
