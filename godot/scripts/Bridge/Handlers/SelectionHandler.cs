@@ -71,7 +71,7 @@ public sealed class SelectionHandler : IMessageHandler
 
         var response = new IpcMessage(
             MessageTypes.Selection,
-            "changed",
+            "update",
             _state,
             message.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
