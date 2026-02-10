@@ -181,4 +181,17 @@ public sealed class SelectionHandler : IMessageHandler
         SelectionChanged?.Invoke(_state);
         return _state;
     }
+
+    /// <summary>
+    /// Collapses specific node IDs (removes them from expanded set).
+    /// </summary>
+    public SelectionState CollapseIds(string[] ids)
+    {
+        var set = new System.Collections.Generic.HashSet<string>(_state.ExpandedIds);
+        foreach (var id in ids) set.Remove(id);
+
+        _state = _state with { ExpandedIds = set.ToArray() };
+        SelectionChanged?.Invoke(_state);
+        return _state;
+    }
 }

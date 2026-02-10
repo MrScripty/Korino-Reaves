@@ -5,6 +5,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
@@ -37,7 +38,7 @@ public sealed class TreeHandler : IMessageHandler
     {
         return action is "getRoot" or "getChildren" or "search" or "getPath"
             or "toggle" or "expand" or "collapse" or "expandAll" or "collapseAll"
-            or "openInFileBrowser";
+            or "expandBranch" or "collapseBranch" or "openInFileBrowser";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
@@ -55,6 +56,8 @@ public sealed class TreeHandler : IMessageHandler
             "collapse" => HandleCollapse(message),
             "expandAll" => HandleExpandAll(message),
             "collapseAll" => HandleCollapseAll(message),
+            "expandBranch" => HandleExpandBranch(message),
+            "collapseBranch" => HandleCollapseBranch(message),
             "openInFileBrowser" => HandleOpenInFileBrowser(message),
             _ => Task.FromResult<IpcMessage?>(null),
         };
@@ -273,6 +276,110 @@ public sealed class TreeHandler : IMessageHandler
             return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
 
         var newState = sel.CollapseAll();
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleExpandBranch(IpcMessage message)
+    {
+        var nodeId = ParseNodeId(message.Payload);
+        if (string.IsNullOrEmpty(nodeId))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in expandBranch request"));
+
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        // Start with IDs the frontend already collected (pre-loaded children, e.g. file tree)
+        var allIds = new System.Collections.Generic.HashSet<string>();
+        if (message.Payload is JsonElement el &&
+            el.TryGetProperty("ids", out var idsProp) &&
+            idsProp.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in idsProp.EnumerateArray())
+            {
+                var s = item.GetString();
+                if (s != null) allIds.Add(s);
+            }
+        }
+
+        // Recursively load lazy children from asset manager and send to frontend
+        if (_assetManager.IsLoaded)
+        {
+            LoadBranchChildren(nodeId, allIds);
+        }
+
+        Models.SelectionState newState;
+        if (allIds.Count > 0)
+        {
+            newState = sel.ExpandIds(allIds.ToArray());
+        }
+        else
+        {
+            newState = sel.CurrentState;
+        }
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", newState,
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    /// <summary>
+    /// Recursively loads children from the asset manager and pushes them to the frontend.
+    /// Collects all expandable node IDs along the way.
+    /// </summary>
+    private void LoadBranchChildren(string nodeId, System.Collections.Generic.HashSet<string> expandIds)
+    {
+        expandIds.Add(nodeId);
+
+        var children = _assetManager.GetChildren(nodeId);
+        if (children == null || children.Length == 0) return;
+
+        // Push children data to frontend
+        _dispatcher.Send(MessageTypes.Tree, "children",
+            new { parentId = nodeId, children });
+
+        // Recurse into children that have their own children
+        foreach (var child in children)
+        {
+            if (child.HasChildren)
+            {
+                LoadBranchChildren(child.Id, expandIds);
+            }
+        }
+    }
+
+    private Task<IpcMessage?> HandleCollapseBranch(IpcMessage message)
+    {
+        var sel = GetSelectionHandler();
+        if (sel == null)
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "SelectionHandler not available"));
+
+        string[]? ids = null;
+        if (message.Payload is JsonElement element &&
+            element.TryGetProperty("ids", out var idsProp) &&
+            idsProp.ValueKind == JsonValueKind.Array)
+        {
+            var list = new System.Collections.Generic.List<string>();
+            foreach (var item in idsProp.EnumerateArray())
+            {
+                var s = item.GetString();
+                if (s != null) list.Add(s);
+            }
+            ids = list.ToArray();
+        }
+
+        Models.SelectionState newState;
+        if (ids != null && ids.Length > 0)
+        {
+            newState = sel.CollapseIds(ids);
+        }
+        else
+        {
+            newState = sel.CurrentState;
+        }
 
         return Task.FromResult<IpcMessage?>(new IpcMessage(
             MessageTypes.Selection, "update", newState,

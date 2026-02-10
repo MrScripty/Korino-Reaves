@@ -197,6 +197,13 @@ public sealed class PropertyHandler : IMessageHandler
             // Push updated edited-files list to frontend
             PushEditedFiles();
 
+            // Re-push properties so frontend gets updated values + isEdited flags
+            var exportId = ResolveExportId(path[0]);
+            if (exportId != null)
+            {
+                PushPropertiesForNode(exportId, _dispatcher);
+            }
+
             var response = new IpcMessage(
                 MessageTypes.Property,
                 "updated",
@@ -394,11 +401,37 @@ public sealed class PropertyHandler : IMessageHandler
         var editedPaths = new System.Collections.Generic.HashSet<string>(
             edits.Select(e => e.PropertyPath));
 
-        return properties.Select(p =>
+        return properties.Select(p => AnnotateProperty(p, editedPaths)).ToArray();
+    }
+
+    private static PropertyValue AnnotateProperty(PropertyValue property, System.Collections.Generic.HashSet<string> editedPaths)
+    {
+        var pathJson = JsonSerializer.Serialize(property.Path);
+        var selfEdited = editedPaths.Contains(pathJson);
+
+        // Recursively annotate children
+        PropertyValue[]? annotatedChildren = null;
+        var childEdited = false;
+        if (property.Children is { Length: > 0 })
         {
-            var pathJson = JsonSerializer.Serialize(p.Path);
-            return editedPaths.Contains(pathJson) ? p with { IsEdited = true } : p;
-        }).ToArray();
+            annotatedChildren = property.Children
+                .Select(c => AnnotateProperty(c, editedPaths))
+                .ToArray();
+            childEdited = annotatedChildren.Any(c => c.IsEdited);
+        }
+
+        var isEdited = selfEdited || childEdited;
+
+        if (isEdited || annotatedChildren != null)
+        {
+            return property with
+            {
+                IsEdited = isEdited,
+                Children = annotatedChildren ?? property.Children
+            };
+        }
+
+        return property;
     }
 
     /// <summary>
@@ -427,6 +460,7 @@ public sealed class PropertyHandler : IMessageHandler
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             JsonValueKind.Null => null,
+            JsonValueKind.Object or JsonValueKind.Array => element.Clone(),
             _ => element.GetRawText()
         };
     }
@@ -492,6 +526,7 @@ public sealed class PropertyHandler : IMessageHandler
                     JsonValueKind.Number => valueProp.GetDouble(),
                     JsonValueKind.True => true,
                     JsonValueKind.False => false,
+                    JsonValueKind.Object or JsonValueKind.Array => valueProp.Clone(),
                     _ => null
                 };
             }

@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
@@ -622,6 +623,86 @@ public sealed class PropertyService
         };
     }
 
+    private static void ApplyStructValue(StructPropertyData structProp, JsonElement json, string[] path)
+    {
+        var structType = structProp.StructType.Value.Value;
+
+        switch (structType)
+        {
+            case "Vector" or "Vector2D" or "Vector4" or "Rotator":
+                ApplyVectorComponents(structProp, json, structType);
+                break;
+
+            case "Color":
+                ApplyColorComponents(structProp, json, isByte: true);
+                break;
+
+            case "LinearColor":
+                ApplyColorComponents(structProp, json, isByte: false);
+                break;
+
+            default:
+                throw new InvalidPropertyValueException(path, json.GetRawText(),
+                    $"Cannot set value on struct type: {structType}");
+        }
+    }
+
+    private static void ApplyVectorComponents(StructPropertyData structProp, JsonElement json, string structType)
+    {
+        // Map component names: Rotator uses Pitch/Yaw/Roll, vectors use X/Y/Z/W
+        var isRotator = structType == "Rotator";
+        var xName = isRotator ? "Pitch" : "X";
+        var yName = isRotator ? "Yaw" : "Y";
+        var zName = isRotator ? "Roll" : "Z";
+
+        foreach (var prop in structProp.Value)
+        {
+            var name = prop.Name.Value.Value;
+            string? jsonKey = name switch
+            {
+                _ when name == xName => "x",
+                _ when name == yName => "y",
+                _ when name == zName => "z",
+                "W" => "w",
+                _ => null
+            };
+
+            if (jsonKey != null && json.TryGetProperty(jsonKey, out var component))
+            {
+                switch (prop)
+                {
+                    case FloatPropertyData floatProp:
+                        floatProp.Value = (float)component.GetDouble();
+                        break;
+                    case DoublePropertyData doubleProp:
+                        doubleProp.Value = component.GetDouble();
+                        break;
+                }
+            }
+        }
+    }
+
+    private static void ApplyColorComponents(StructPropertyData structProp, JsonElement json, bool isByte)
+    {
+        foreach (var prop in structProp.Value)
+        {
+            var name = prop.Name.Value.Value;
+            var jsonKey = name.ToLowerInvariant(); // R→r, G→g, B→b, A→a
+
+            if (json.TryGetProperty(jsonKey, out var component))
+            {
+                if (isByte && prop is BytePropertyData byteProp)
+                {
+                    byteProp.Value = (byte)component.GetInt32();
+                }
+                else if (!isByte && prop is FloatPropertyData floatProp)
+                {
+                    floatProp.Value = (float)component.GetDouble();
+                }
+            }
+        }
+    }
+
     private void ApplyValue(PropertyData property, object value, string[] path)
     {
         try
@@ -666,6 +747,10 @@ public sealed class PropertyService
 
                 case EnumPropertyData enumProp:
                     enumProp.Value = FName.DefineDummy(null, value?.ToString() ?? "None");
+                    break;
+
+                case StructPropertyData structProp when value is JsonElement jsonEl:
+                    ApplyStructValue(structProp, jsonEl, path);
                     break;
 
                 default:
