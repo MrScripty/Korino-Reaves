@@ -36,6 +36,7 @@ public sealed class PreviewManager : IDisposable
     private readonly TextureExtractor _textureExtractor;
     private readonly MeshExtractor _meshExtractor;
     private readonly MaterialExtractor _materialExtractor;
+    private readonly ColorSpaceManager? _colorSpaceManager;
 
     private DefaultFileProvider? _fileProvider;
     private string? _projectPath;
@@ -46,6 +47,8 @@ public sealed class PreviewManager : IDisposable
     private Camera3D? _camera;
     private MeshInstance3D? _meshInstance;
     private DirectionalLight3D? _light;
+    private DirectionalLight3D? _fillLight;
+    private WorldEnvironment? _worldEnvironment;
     private Node? _parentNode;
     private int _captureCountdown;
 
@@ -56,6 +59,8 @@ public sealed class PreviewManager : IDisposable
     private Vector3 _cameraTarget = Vector3.Zero;
 
     private bool _doubleSided = true;
+    private string _renderMode = "shaded";
+    private float _timeOfDay = 10f;
     private bool _disposed;
 
     private const int ViewportWidth = 1024;
@@ -67,7 +72,10 @@ public sealed class PreviewManager : IDisposable
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _textureExtractor = new TextureExtractor(logger);
         _meshExtractor = new MeshExtractor(logger);
-        _materialExtractor = new MaterialExtractor(logger, _textureExtractor);
+
+        // Initialize OCIO+OIIO color bridge (gracefully degrades if native library unavailable)
+        _colorSpaceManager = ColorBridgeInitializer.EnsureInitialized(logger);
+        _materialExtractor = new MaterialExtractor(logger, _textureExtractor, _colorSpaceManager);
     }
 
     /// <summary>
@@ -123,7 +131,7 @@ public sealed class PreviewManager : IDisposable
         };
 
         // Add a fill light from the opposite direction
-        var fillLight = new DirectionalLight3D
+        _fillLight = new DirectionalLight3D
         {
             RotationDegrees = new Vector3(-20, -135, 0),
             ShadowEnabled = false,
@@ -133,7 +141,7 @@ public sealed class PreviewManager : IDisposable
         _meshInstance = new MeshInstance3D();
 
         // Add an environment for ambient lighting
-        var env = new WorldEnvironment
+        _worldEnvironment = new WorldEnvironment
         {
             Environment = new Godot.Environment
             {
@@ -142,14 +150,17 @@ public sealed class PreviewManager : IDisposable
                 AmbientLightSource = Godot.Environment.AmbientSource.Color,
                 AmbientLightColor = new Color(0.3f, 0.3f, 0.35f),
                 AmbientLightEnergy = 0.5f,
+                // UE4 uses ACES tone mapping by default — match it for
+                // more accurate color reproduction.
+                TonemapMode = Godot.Environment.ToneMapper.Aces,
             }
         };
 
         _subViewport.AddChild(_camera);
         _subViewport.AddChild(_light);
-        _subViewport.AddChild(fillLight);
+        _subViewport.AddChild(_fillLight);
         _subViewport.AddChild(_meshInstance);
-        _subViewport.AddChild(env);
+        _subViewport.AddChild(_worldEnvironment);
         _parentNode!.AddChild(_subViewport);
         UpdateCameraTransform();
 
@@ -430,6 +441,9 @@ public sealed class PreviewManager : IDisposable
         _logger.Info("Camera: pos={Pos}, target={Target}, distance={Dist}",
             _camera.Position, _cameraTarget, _cameraDistance);
 
+        // Ensure current render mode and lighting are applied
+        ApplyRenderMode();
+
         // Request a single render frame from the SubViewport
         _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
 
@@ -518,6 +532,7 @@ public sealed class PreviewManager : IDisposable
         _cameraPitch = -30f;
 
         UpdateCameraTransform();
+        PushCameraState();
     }
 
     /// <summary>
@@ -527,6 +542,29 @@ public sealed class PreviewManager : IDisposable
     {
         _cameraYaw += dx * 0.3f;
         _cameraPitch = Mathf.Clamp(_cameraPitch + dy * 0.3f, -89f, 89f);
+        UpdateCameraTransform();
+        RequestCapture();
+        PushCameraState();
+    }
+
+    /// <summary>
+    /// Pans the camera target by the given screen-space deltas (in pixels).
+    /// Moves along the camera's local right and up vectors so panning feels
+    /// natural regardless of the viewing angle.
+    /// </summary>
+    public void HandleCameraPan(float dx, float dy)
+    {
+        if (_camera == null) return;
+
+        // Camera right and up vectors in world space
+        var right = _camera.GlobalTransform.Basis.X;
+        var up = _camera.GlobalTransform.Basis.Y;
+
+        // Scale sensitivity by distance so pan speed feels consistent at any zoom
+        var sensitivity = _cameraDistance * 0.002f;
+        _cameraTarget -= right * dx * sensitivity;
+        _cameraTarget += up * dy * sensitivity;
+
         UpdateCameraTransform();
         RequestCapture();
     }
@@ -559,6 +597,20 @@ public sealed class PreviewManager : IDisposable
             UpdateCameraTransform();
         }
         RequestCapture();
+        PushCameraState();
+    }
+
+    /// <summary>
+    /// Sets the camera to an exact yaw/pitch for preset views (e.g. Front, Top, Right).
+    /// Called when the user clicks an axis on the orientation gizmo.
+    /// </summary>
+    public void HandleSetCameraView(float yaw, float pitch)
+    {
+        _cameraYaw = yaw;
+        _cameraPitch = Mathf.Clamp(pitch, -89f, 89f);
+        UpdateCameraTransform();
+        RequestCapture();
+        PushCameraState();
     }
 
     /// <summary>
@@ -587,6 +639,144 @@ public sealed class PreviewManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sets the render mode: shaded (normal), shadeless (unlit), or wireframe.
+    /// Uses Godot's SubViewport DebugDraw modes.
+    /// </summary>
+    public void HandleSetRenderMode(string mode)
+    {
+        _renderMode = mode;
+        ApplyRenderMode();
+        RequestCapture();
+    }
+
+    private void ApplyRenderMode()
+    {
+        if (_subViewport == null) return;
+
+        _subViewport.DebugDraw = _renderMode switch
+        {
+            "shadeless" => Viewport.DebugDrawEnum.Unshaded,
+            "wireframe" => Viewport.DebugDrawEnum.Wireframe,
+            _ => Viewport.DebugDrawEnum.Disabled,
+        };
+    }
+
+    /// <summary>
+    /// Sets the time of day (0-24 hours) and updates scene lighting accordingly.
+    /// </summary>
+    public void HandleSetTimeOfDay(float hours)
+    {
+        _timeOfDay = Mathf.Clamp(hours, 0f, 24f);
+        UpdateLighting();
+        RequestCapture();
+    }
+
+    private void UpdateLighting()
+    {
+        if (_light == null || _fillLight == null || _worldEnvironment?.Environment == null) return;
+
+        var env = _worldEnvironment.Environment;
+
+        // Calculate sun elevation from time of day
+        // Daytime: 6:00-18:00, sun traces an arc peaking at noon
+        float elevation;
+        bool isDay;
+
+        if (_timeOfDay >= 6f && _timeOfDay <= 18f)
+        {
+            // Normalized progress through daytime (0 at sunrise, 1 at sunset)
+            float t = (_timeOfDay - 6f) / 12f;
+            elevation = Mathf.Sin(t * Mathf.Pi) * 80f;
+            isDay = true;
+        }
+        else
+        {
+            // Night: sun below horizon
+            elevation = -10f;
+            isDay = false;
+        }
+
+        // Main light direction — elevation controls pitch, yaw fixed at 45°
+        _light.RotationDegrees = new Vector3(-elevation, 45f, 0f);
+
+        // Sun color and energy based on elevation
+        Color sunColor;
+        float sunEnergy;
+
+        if (elevation > 30f)
+        {
+            // High sun — white-ish, full energy
+            sunColor = new Color(1.0f, 0.98f, 0.95f);
+            sunEnergy = 1.2f;
+        }
+        else if (elevation > 5f)
+        {
+            // Low sun — warm golden hour
+            float t = (elevation - 5f) / 25f; // 0 at 5°, 1 at 30°
+            sunColor = new Color(1.0f, Mathf.Lerp(0.7f, 0.98f, t), Mathf.Lerp(0.4f, 0.95f, t));
+            sunEnergy = Mathf.Lerp(0.6f, 1.2f, t);
+        }
+        else if (elevation > -5f)
+        {
+            // Twilight — dim warm
+            float t = (elevation + 5f) / 10f; // 0 at -5°, 1 at 5°
+            sunColor = new Color(1.0f, Mathf.Lerp(0.4f, 0.7f, t), Mathf.Lerp(0.2f, 0.4f, t));
+            sunEnergy = Mathf.Lerp(0.1f, 0.6f, t);
+        }
+        else
+        {
+            // Night — dim cool blue
+            sunColor = new Color(0.3f, 0.4f, 0.6f);
+            sunEnergy = 0.05f;
+        }
+
+        _light.LightColor = sunColor;
+        _light.LightEnergy = sunEnergy;
+
+        // Fill light follows proportionally
+        _fillLight.LightEnergy = sunEnergy * 0.35f;
+        _fillLight.LightColor = sunColor;
+
+        // Ambient light
+        if (isDay)
+        {
+            if (elevation > 30f)
+            {
+                // Bright day — cool blue-gray ambient
+                env.AmbientLightColor = new Color(0.3f, 0.3f, 0.35f);
+                env.AmbientLightEnergy = 0.5f;
+            }
+            else
+            {
+                // Golden hour — warm ambient
+                float t = Mathf.Clamp(elevation / 30f, 0f, 1f);
+                env.AmbientLightColor = new Color(
+                    Mathf.Lerp(0.35f, 0.3f, t),
+                    Mathf.Lerp(0.28f, 0.3f, t),
+                    Mathf.Lerp(0.2f, 0.35f, t));
+                env.AmbientLightEnergy = Mathf.Lerp(0.3f, 0.5f, t);
+            }
+        }
+        else
+        {
+            // Night — dark blue ambient
+            env.AmbientLightColor = new Color(0.1f, 0.1f, 0.2f);
+            env.AmbientLightEnergy = 0.15f;
+        }
+
+        // Background color shifts with time
+        if (isDay)
+        {
+            float brightness = Mathf.Lerp(0.08f, 0.12f, Mathf.Clamp(elevation / 40f, 0f, 1f));
+            env.BackgroundColor = new Color(brightness, brightness, brightness);
+        }
+        else
+        {
+            env.BackgroundColor = new Color(0.04f, 0.04f, 0.06f);
+        }
+    }
+
     private void UpdateCameraTransform()
     {
         if (_camera == null) return;
@@ -611,6 +801,15 @@ public sealed class PreviewManager : IDisposable
         _subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
         _captureCountdown = 2;
         // pendingAssetName/pendingMeshInfo remain from the last render
+    }
+
+    private void PushCameraState()
+    {
+        _dispatcher.Send(MessageTypes.Viewport, "cameraState", new
+        {
+            yaw = _cameraYaw,
+            pitch = _cameraPitch,
+        });
     }
 
     // -----------------------------------------------------------------
@@ -871,11 +1070,16 @@ public sealed class PreviewManager : IDisposable
 
         DisposeProvider();
 
+        // Shut down OCIO+OIIO color bridge
+        ColorBridgeInitializer.Shutdown();
+
         // Clean up SubViewport scene tree
         _subViewport?.QueueFree();
         _subViewport = null;
         _camera = null;
         _meshInstance = null;
         _light = null;
+        _fillLight = null;
+        _worldEnvironment = null;
     }
 }

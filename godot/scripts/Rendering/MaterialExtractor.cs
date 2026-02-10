@@ -35,11 +35,14 @@ public sealed class MaterialExtractor
 
     private readonly IAppLogger _logger;
     private readonly TextureExtractor _textureExtractor;
+    private readonly ColorSpaceManager? _colorSpace;
 
-    public MaterialExtractor(IAppLogger logger, TextureExtractor textureExtractor)
+    public MaterialExtractor(IAppLogger logger, TextureExtractor textureExtractor,
+        ColorSpaceManager? colorSpaceManager = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _textureExtractor = textureExtractor ?? throw new ArgumentNullException(nameof(textureExtractor));
+        _colorSpace = colorSpaceManager;
     }
 
     /// <summary>
@@ -378,6 +381,15 @@ public sealed class MaterialExtractor
         // --- Albedo (Diffuse) ---
         if (diffuseImage != null)
         {
+            // CUE4Parse decodes textures to sRGB bytes matching UE4's storage format.
+            // Godot's ImageTexture.CreateFromImage() uploads as UNORM (linear) on the GPU,
+            // so we must convert sRGB→linear ourselves for correct PBR lighting.
+            // Uses OCIO when available, falls back to Godot's built-in conversion.
+            var linearDiffuse = _colorSpace?.TransformImage(diffuseImage, "sRGB", "Linear");
+            if (linearDiffuse != null)
+                diffuseImage = linearDiffuse;
+            else
+                diffuseImage.SrgbToLinear();
             material.AlbedoTexture = ImageTexture.CreateFromImage(diffuseImage);
         }
 
@@ -409,6 +421,11 @@ public sealed class MaterialExtractor
         // --- Emissive ---
         if (emissiveImage != null)
         {
+            var linearEmissive = _colorSpace?.TransformImage(emissiveImage, "sRGB", "Linear");
+            if (linearEmissive != null)
+                emissiveImage = linearEmissive;
+            else
+                emissiveImage.SrgbToLinear();
             material.EmissionEnabled = true;
             material.EmissionTexture = ImageTexture.CreateFromImage(emissiveImage);
             material.Emission = Colors.White;
