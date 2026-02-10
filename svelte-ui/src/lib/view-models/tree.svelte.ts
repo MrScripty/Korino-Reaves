@@ -82,6 +82,27 @@ class TreeVM {
         });
     }
 
+    expandBranch(id: string): void {
+        // Collect IDs from already-loaded children (works for file tree).
+        // Backend will also recursively load lazy children (asset tree).
+        const ids = collectSubtreeExpandableIds(this.nodes, id);
+        ipc.send({
+            type: 'tree',
+            action: 'expandBranch',
+            payload: { id, ids },
+        });
+    }
+
+    collapseBranch(id: string): void {
+        const ids = collectAllSubtreeIds(this.nodes, id);
+        if (ids.length === 0) return;
+        ipc.send({
+            type: 'tree',
+            action: 'collapseBranch',
+            payload: { ids },
+        });
+    }
+
     setFilter(query: string): void {
         this.filterQuery = query;
         ipc.send({
@@ -283,6 +304,40 @@ function collectExpandableIds(nodeList: TreeNode[]): string[] {
         }
     }
     return ids;
+}
+
+/**
+ * Collect all expandable IDs from a subtree rooted at rootId.
+ */
+function collectSubtreeExpandableIds(nodeList: TreeNode[], rootId: string): string[] {
+    const node = findNodeById(nodeList, rootId);
+    if (!node || !node.hasChildren) return [];
+
+    const ids: string[] = [node.id];
+    if (node.children) {
+        ids.push(...collectExpandableIds(node.children));
+    }
+    return ids;
+}
+
+/**
+ * Collect ALL descendant IDs from a subtree rooted at rootId.
+ */
+function collectAllSubtreeIds(nodeList: TreeNode[], rootId: string): string[] {
+    const node = findNodeById(nodeList, rootId);
+    if (!node) return [];
+
+    const ids: string[] = [node.id];
+    collectDescendantIds(node, ids);
+    return ids;
+}
+
+function collectDescendantIds(node: TreeNode, ids: string[]): void {
+    if (!node.children) return;
+    for (const child of node.children) {
+        ids.push(child.id);
+        collectDescendantIds(child, ids);
+    }
 }
 
 /**

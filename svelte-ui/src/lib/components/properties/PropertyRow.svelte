@@ -90,9 +90,6 @@
             {/if}
         </span>
         {displayName}
-        {#if isEdited}
-            <span class="edit-badge" title="Modified from original value"></span>
-        {/if}
     </div>
 
     <div class="property-value" style="color: {valueColor}">
@@ -268,16 +265,16 @@
         opacity: 1;
     }
 
-    .property-row.edited .property-name {
-        color: var(--color-warning, #f59e0b);
+    .property-row.edited {
+        background: color-mix(in srgb, var(--color-warning, #f59e0b) 12%, transparent);
     }
 
-    .edit-badge {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--color-warning, #f59e0b);
-        flex-shrink: 0;
+    .property-row.edited:hover {
+        background: color-mix(in srgb, var(--color-warning, #f59e0b) 20%, transparent);
+    }
+
+    .property-row.edited .property-name {
+        color: var(--color-warning, #f59e0b);
     }
 
     .property-value {

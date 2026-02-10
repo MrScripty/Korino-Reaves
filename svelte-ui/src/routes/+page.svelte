@@ -14,9 +14,11 @@
     import PropertyGrid from '$lib/components/properties/PropertyGrid.svelte';
     import Tabs from '$lib/components/common/Tabs.svelte';
     import ViewportPreview from '$lib/components/viewport/ViewportPreview.svelte';
+    import SceneOutliner from '$lib/components/scene/SceneOutliner.svelte';
     import ImportPakDialog from '$lib/components/dialogs/ImportPakDialog.svelte';
     import FileBrowser from '$lib/components/dialogs/FileBrowser.svelte';
     import { fileBrowser } from '$lib/view-models/fileBrowser.svelte';
+    import { scene } from '$lib/view-models/scene.svelte';
     import { LAYOUT } from '$lib/constants';
 
     // Bottom panel tabs
@@ -70,63 +72,73 @@
             {/snippet}
 
             {#snippet second()}
-                <!-- Main viewport area with bottom panel -->
-                <div class="viewport-area">
-                    <!-- 3D/2D Viewport -->
-                    <div class="viewport">
-                        <ViewportPreview />
+                <!-- Center + optional right panel -->
+                <div class="center-area">
+                    <!-- Viewport + bottom panel -->
+                    <div class="viewport-area">
+                        <!-- 3D/2D Viewport -->
+                        <div class="viewport">
+                            <ViewportPreview />
+                        </div>
+
+                        <!-- Bottom panel: Hex/Data/Log -->
+                        {#if !bottomPanelCollapsed}
+                            <div class="bottom-panel">
+                                <Panel solid>
+                                    <Tabs
+                                        tabs={bottomTabs}
+                                        bind:activeTab={activeBottomTab}
+                                    >
+                                        {#snippet children(tabId)}
+                                            <div class="tab-content">
+                                                {#if tabId === 'hex'}
+                                                    <div class="hex-placeholder">
+                                                        <span class="text-muted text-sm">
+                                                            Hex view will appear here
+                                                        </span>
+                                                    </div>
+                                                {:else if tabId === 'data'}
+                                                    <div class="data-placeholder">
+                                                        <span class="text-muted text-sm">
+                                                            Data table will appear here
+                                                        </span>
+                                                    </div>
+                                                {:else if tabId === 'log'}
+                                                    <div class="log-placeholder">
+                                                        <span class="text-muted text-sm">
+                                                            Log messages will appear here
+                                                        </span>
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        {/snippet}
+                                    </Tabs>
+                                </Panel>
+                            </div>
+                        {/if}
+
+                        <!-- Bottom panel toggle -->
+                        <button
+                            class="bottom-panel-toggle"
+                            onclick={() => { bottomPanelCollapsed = !bottomPanelCollapsed; }}
+                            aria-label={bottomPanelCollapsed ? 'Show bottom panel' : 'Hide bottom panel'}
+                        >
+                            <svg
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                                class:rotated={bottomPanelCollapsed}
+                            >
+                                <path d="M4 8l4 4 4-4H4z" />
+                            </svg>
+                        </button>
                     </div>
 
-                    <!-- Bottom panel: Hex/Data/Log -->
-                    {#if !bottomPanelCollapsed}
-                        <div class="bottom-panel">
-                            <Panel solid>
-                                <Tabs
-                                    tabs={bottomTabs}
-                                    bind:activeTab={activeBottomTab}
-                                >
-                                    {#snippet children(tabId)}
-                                        <div class="tab-content">
-                                            {#if tabId === 'hex'}
-                                                <div class="hex-placeholder">
-                                                    <span class="text-muted text-sm">
-                                                        Hex view will appear here
-                                                    </span>
-                                                </div>
-                                            {:else if tabId === 'data'}
-                                                <div class="data-placeholder">
-                                                    <span class="text-muted text-sm">
-                                                        Data table will appear here
-                                                    </span>
-                                                </div>
-                                            {:else if tabId === 'log'}
-                                                <div class="log-placeholder">
-                                                    <span class="text-muted text-sm">
-                                                        Log messages will appear here
-                                                    </span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                    {/snippet}
-                                </Tabs>
-                            </Panel>
+                    <!-- Right panel: Scene Outliner (only in scene mode) -->
+                    {#if scene.isActive}
+                        <div class="right-panel">
+                            <SceneOutliner />
                         </div>
                     {/if}
-
-                    <!-- Bottom panel toggle -->
-                    <button
-                        class="bottom-panel-toggle"
-                        onclick={() => { bottomPanelCollapsed = !bottomPanelCollapsed; }}
-                        aria-label={bottomPanelCollapsed ? 'Show bottom panel' : 'Hide bottom panel'}
-                    >
-                        <svg
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                            class:rotated={bottomPanelCollapsed}
-                        >
-                            <path d="M4 8l4 4 4-4H4z" />
-                        </svg>
-                    </button>
                 </div>
             {/snippet}
         </SplitPane>
@@ -187,11 +199,25 @@
         flex-direction: column;
     }
 
-    .viewport-area {
+    .center-area {
         height: 100%;
+        display: flex;
+        flex-direction: row;
+    }
+
+    .viewport-area {
+        flex: 1;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         position: relative;
+    }
+
+    .right-panel {
+        width: 260px;
+        flex-shrink: 0;
+        border-left: 1px solid var(--border);
+        overflow: hidden;
     }
 
     .viewport {

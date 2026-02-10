@@ -157,6 +157,19 @@
         const selectedId = tree.selection.selectedId;
         if (!selectedId) return;
 
+        // Ctrl+Arrow: recursive branch expand/collapse
+        if (event.ctrlKey || event.metaKey) {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                tree.expandBranch(selectedId);
+                return;
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                tree.collapseBranch(selectedId);
+                return;
+            }
+        }
+
         const currentIndex = flattenedNodes.findIndex(
             (item) => item.node.id === selectedId
         );

@@ -32,7 +32,15 @@
         event.stopPropagation();
         tree.selectNode(node.id);
         if (node.hasChildren) {
-            tree.toggleExpand(node.id);
+            if (event.ctrlKey || event.metaKey) {
+                if (isExpanded) {
+                    tree.collapseBranch(node.id);
+                } else {
+                    tree.expandBranch(node.id);
+                }
+            } else {
+                tree.toggleExpand(node.id);
+            }
         }
     }
 
@@ -100,11 +108,6 @@
     <span class="name" style="color: {nodeColor}">
         {node.name}
     </span>
-
-    <!-- Edit indicator for files with property edits -->
-    {#if isEdited}
-        <span class="edit-indicator" title="Has property edits"></span>
-    {/if}
 
     <!-- Value preview (if available) -->
     {#if node.metadata?.valuePreview}
@@ -196,16 +199,15 @@
         opacity: 0.7;
     }
 
-    .edit-indicator {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--color-warning, #f59e0b);
-        margin-left: var(--space-1);
-        flex-shrink: 0;
+    .tree-node.edited {
+        background: color-mix(in srgb, var(--color-warning, #f59e0b) 12%, transparent);
     }
 
-    .tree-node.edited .name {
-        font-style: italic;
+    .tree-node.edited:hover {
+        background: color-mix(in srgb, var(--color-warning, #f59e0b) 20%, transparent);
+    }
+
+    .tree-node.edited.selected {
+        background: var(--accent-primary);
     }
 </style>

@@ -22,6 +22,7 @@ export type MessageType =
     | 'selection'  // Selection state changes
     | 'diff'       // Diff comparison results
     | 'viewport'   // 3D/2D viewport commands
+    | 'scene'      // Scene/level viewer commands
     | 'agent'      // AI agent status and commands
     | 'dialog'     // Native file dialogs (open, save)
     | 'pak'        // PAK archive operations (import, list)
@@ -503,15 +504,52 @@ export interface ViewportPreviewPayload {
     /** Base64 PNG data URL (data:image/png;base64,...) */
     imageData: string;
     /** Preview mode */
-    mode: '2d' | '3d';
+    mode: '2d' | '3d' | 'scene';
     /** Type of content being previewed */
-    contentType: 'texture' | 'mesh';
+    contentType: 'texture' | 'mesh' | 'level';
     /** Display name of the asset */
     assetName: string;
     /** Texture-specific metadata */
     textureInfo?: { width: number; height: number; format: string };
     /** Mesh-specific metadata */
     meshInfo?: { vertexCount: number; triangleCount: number; lodCount: number };
+    /** Scene-specific metadata (when mode is 'scene') */
+    sceneInfo?: SceneInfo;
+}
+
+// =============================================================================
+// Scene Types
+// =============================================================================
+
+/**
+ * Represents a single actor extracted from a UE level.
+ * Used in the scene outliner.
+ */
+export interface SceneActor {
+    /** Unique identifier for this actor */
+    id: string;
+    /** Actor name from the level */
+    name: string;
+    /** UE class name (e.g., "StaticMeshActor") */
+    className: string;
+    /** Game path to the mesh asset, if any */
+    meshPath: string | null;
+    /** Position in Godot coordinates [x, y, z] */
+    position: [number, number, number] | null;
+    /** Whether this actor has a renderable mesh */
+    hasMesh: boolean;
+    /** Whether the mesh has been loaded into the viewport */
+    isLoaded: boolean;
+}
+
+/**
+ * Summary info about the loaded scene.
+ */
+export interface SceneInfo {
+    /** Number of actors rendered in the viewport */
+    actorCount: number;
+    /** Name of the loaded level */
+    levelName: string;
 }
 
 // =============================================================================

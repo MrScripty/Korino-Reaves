@@ -8,7 +8,9 @@
  */
 
 import { ipc } from '$lib/bridge/ipc';
-import type { ViewportPreviewPayload } from '$lib/bridge/types';
+import type { ViewportPreviewPayload, SceneInfo } from '$lib/bridge/types';
+
+export type RenderMode = 'shaded' | 'shadeless' | 'wireframe';
 
 class ViewportVM {
     previewData = $state<string | null>(null);
@@ -19,7 +21,12 @@ class ViewportVM {
 
     textureInfo = $state<{ width: number; height: number; format: string } | null>(null);
     meshInfo = $state<{ vertexCount: number; triangleCount: number; lodCount: number } | null>(null);
+    sceneInfo = $state<SceneInfo | null>(null);
     doubleSided = $state(true);
+    renderMode = $state<RenderMode>('shaded');
+    timeOfDay = $state(10.0);
+    cameraYaw = $state(45);
+    cameraPitch = $state(-30);
 
     get hasPreview(): boolean {
         return this.previewData !== null;
@@ -27,6 +34,14 @@ class ViewportVM {
 
     get is3D(): boolean {
         return this.mode === '3d';
+    }
+
+    get isScene(): boolean {
+        return this.mode === 'scene';
+    }
+
+    get has3DControls(): boolean {
+        return this.mode === '3d' || this.mode === 'scene';
     }
 
     get infoText(): string {
@@ -42,6 +57,9 @@ class ViewportVM {
                 parts.push(`${this.meshInfo.lodCount} LODs`);
             }
             return parts.join(' — ');
+        }
+        if (this.sceneInfo) {
+            return `${this.sceneInfo.actorCount} actors — ${this.sceneInfo.levelName}`;
         }
         return '';
     }
@@ -62,6 +80,14 @@ class ViewportVM {
         });
     }
 
+    panCamera(dx: number, dy: number): void {
+        ipc.send({
+            type: 'viewport',
+            action: 'panCamera',
+            payload: { dx, dy },
+        });
+    }
+
     resetCamera(): void {
         ipc.send({
             type: 'viewport',
@@ -76,6 +102,32 @@ class ViewportVM {
             type: 'viewport',
             action: 'setDoubleSided',
             payload: { enabled },
+        });
+    }
+
+    setRenderMode(mode: RenderMode): void {
+        this.renderMode = mode;
+        ipc.send({
+            type: 'viewport',
+            action: 'setRenderMode',
+            payload: { mode },
+        });
+    }
+
+    setTimeOfDay(hours: number): void {
+        this.timeOfDay = hours;
+        ipc.send({
+            type: 'viewport',
+            action: 'setTimeOfDay',
+            payload: { hours },
+        });
+    }
+
+    setCameraView(yaw: number, pitch: number): void {
+        ipc.send({
+            type: 'viewport',
+            action: 'setCameraView',
+            payload: { yaw, pitch },
         });
     }
 }
@@ -93,11 +145,17 @@ ipc.onAction<ViewportPreviewPayload>('viewport', 'preview', (payload) => {
     viewport.assetName = payload.assetName;
     viewport.textureInfo = payload.textureInfo ?? null;
     viewport.meshInfo = payload.meshInfo ?? null;
+    viewport.sceneInfo = payload.sceneInfo ?? null;
     viewport.isLoading = false;
 });
 
 ipc.onAction<{ loading: boolean }>('viewport', 'loading', (payload) => {
     viewport.isLoading = payload.loading;
+});
+
+ipc.onAction<{ yaw: number; pitch: number }>('viewport', 'cameraState', (payload) => {
+    viewport.cameraYaw = payload.yaw;
+    viewport.cameraPitch = payload.pitch;
 });
 
 ipc.onAction('viewport', 'cleared', () => {
@@ -107,7 +165,10 @@ ipc.onAction('viewport', 'cleared', () => {
     viewport.assetName = null;
     viewport.textureInfo = null;
     viewport.meshInfo = null;
+    viewport.sceneInfo = null;
     viewport.isLoading = false;
+    viewport.cameraYaw = 45;
+    viewport.cameraPitch = -30;
 });
 
 // Clear viewport when project closes
@@ -118,5 +179,8 @@ ipc.onAction('project', 'closed', () => {
     viewport.assetName = null;
     viewport.textureInfo = null;
     viewport.meshInfo = null;
+    viewport.sceneInfo = null;
     viewport.isLoading = false;
+    viewport.cameraYaw = 45;
+    viewport.cameraPitch = -30;
 });
