@@ -39,6 +39,7 @@ public partial class MainController : Node
     private Node? _cefNode;
     private IpcDispatcher? _dispatcher;
     private PreviewManager? _previewManager;
+    private SceneManager? _sceneManager;
     private TextureRect? _overlay;
     private bool _browserCreated;
 
@@ -97,6 +98,7 @@ public partial class MainController : Node
     public override void _Process(double delta)
     {
         _previewManager?.ProcessFrame();
+        _sceneManager?.ProcessFrame();
     }
 
     public override void _Notification(int what)
@@ -277,10 +279,16 @@ public partial class MainController : Node
         var propertyHandler = new PropertyHandler(_logger, _assetManager, _editDatabase, _dispatcher);
         _dispatcher.RegisterHandler(propertyHandler);
 
-        // Create preview manager and viewport handler (depends on dispatcher having handlers)
+        // Create preview manager and scene manager (depends on dispatcher having handlers)
         _previewManager = new PreviewManager(_logger, _dispatcher);
         _previewManager.Initialize(this);
-        _dispatcher.RegisterHandler(new ViewportHandler(_logger, _previewManager));
+
+        _sceneManager = new SceneManager(_logger, _dispatcher);
+        _sceneManager.Initialize(this);
+
+        // Register viewport handler with both managers for camera routing
+        _dispatcher.RegisterHandler(new ViewportHandler(_logger, _previewManager, _sceneManager));
+        _dispatcher.RegisterHandler(new SceneHandler(_logger, _sceneManager));
 
         // Open/close edit database when project opens/closes
         var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
@@ -515,6 +523,7 @@ public partial class MainController : Node
         _logger.Info("Cleaning up...");
 
         _editDatabase?.Dispose();
+        _sceneManager?.Dispose();
         _previewManager?.Dispose();
         _dispatcher?.Dispose();
 

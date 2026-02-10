@@ -19,6 +19,7 @@ public static class MessageTypes
     public const string Pak = "pak";
     public const string Project = "project";
     public const string Error = "error";
+    public const string Scene = "scene";
     public const string Test = "test";
 }
 
