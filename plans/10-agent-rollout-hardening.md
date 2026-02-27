@@ -65,6 +65,11 @@ for safe rollout of agent scaffolding in Korino.
 
 Run this checklist before enabling agent runtime by default:
 
+Automated subset:
+
+- `./scripts/smoke-agent-rollout.sh`
+- Optional full test attempt: `./scripts/smoke-agent-rollout.sh --with-main-tests`
+
 1. Runtime toggle:
    - Start app with `KORINO_AGENT_ENABLED=false`; verify agent calls return disabled reason.
    - Start app with `KORINO_AGENT_ENABLED=true`; verify agent status lifecycle events emit.
