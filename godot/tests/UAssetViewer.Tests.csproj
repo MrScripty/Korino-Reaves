@@ -33,6 +33,20 @@
     <Compile Include="../scripts/Bridge/Handlers/IMessageHandler.cs" />
     <Compile Include="../scripts/Bridge/Handlers/TestHandler.cs" />
     <Compile Include="../scripts/Services/**/*.cs" />
+    <Compile Include="../scripts/Agent/AgentCapabilityRegistry.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/CapabilityModels.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/IProjectPathProvider.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/IProjectExplorerCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/ProjectExplorerCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/IDependencyDataAccess.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/IDependencyGraphCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/DependencyGraphCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/IMetadataCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/MetadataCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/ISelectionStateController.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/ISelectionBroadcaster.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/IGuiSelectionCapability.cs" />
+    <Compile Include="../scripts/Agent/Capabilities/GuiSelectionCapability.cs" />
     <!-- Asset layer - Godot-agnostic parts only -->
     <Compile Include="../scripts/Assets/AssetLoader.cs" />
     <Compile Include="../scripts/Assets/TreeBuilder.cs" />
