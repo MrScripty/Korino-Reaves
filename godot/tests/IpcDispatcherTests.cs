@@ -3,6 +3,7 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using UAssetViewer.Assets;
 using UAssetViewer.Bridge;
 using UAssetViewer.Bridge.Handlers;
 using UAssetViewer.Models;
@@ -18,7 +19,7 @@ public class IpcDispatcherTests : IDisposable
     public IpcDispatcherTests()
     {
         _logger = new TestLogger();
-        _dispatcher = new IpcDispatcher(_logger);
+        _dispatcher = new IpcDispatcher(_logger, new AssetManager(_logger));
     }
 
     public void Dispose()
@@ -69,7 +70,7 @@ public class IpcDispatcherTests : IDisposable
         // Assert
         _logger.Entries.Should().Contain(e =>
             e.Level == Infrastructure.LogLevel.Warning &&
-            e.Message.Contains("unknown")
+            e.Message.Contains("No handler registered for message type")
         );
     }
 

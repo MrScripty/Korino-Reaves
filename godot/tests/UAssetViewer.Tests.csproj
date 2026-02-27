@@ -32,6 +32,9 @@
     <Compile Include="../scripts/Bridge/IpcDispatcher.cs" />
     <Compile Include="../scripts/Bridge/Handlers/IMessageHandler.cs" />
     <Compile Include="../scripts/Bridge/Handlers/TestHandler.cs" />
+    <Compile Include="../scripts/Diff/DiffEngine.cs" />
+    <Compile Include="../scripts/Diff/ConflictDetector.cs" />
+    <Compile Include="../scripts/Diff/PatchGenerator.cs" />
     <Compile Include="../scripts/Services/**/*.cs" />
     <Compile Include="../scripts/Agent/AgentCapabilityRegistry.cs" />
     <Compile Include="../scripts/Agent/AgentExecutionPolicy.cs" />
