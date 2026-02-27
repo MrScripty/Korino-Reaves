@@ -65,4 +65,5 @@ Ship incrementally with low disruption to continued Korino development.
 ### Acceptance Criteria
 
 - Agent scaffolding can be toggled on/off safely.
-- Regression checklist is defined; execution is required before enabling by default.
+- Automated smoke checks pass (`scripts/smoke-agent-rollout.sh --with-main-tests`).
+- Manual in-app UI checklist verification is the remaining rollout gate.

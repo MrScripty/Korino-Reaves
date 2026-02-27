@@ -100,3 +100,14 @@ Automated subset:
    - Add model/runtime health endpoint and UI status surface.
 4. Test infrastructure:
    - Repair main `godot/tests` compile drift so integration coverage runs in primary test suite.
+
+## Execution Record
+
+As of February 27, 2026:
+
+- `./scripts/smoke-agent-rollout.sh --with-main-tests` passed.
+- `dotnet test godot/tests/UAssetViewer.Tests.csproj` passed (`75/75`).
+- `dotnet test /tmp/korino-agent-capability-tests/AgentCapabilityTests.csproj` passed (`1/1`).
+
+Manual interactive UI checks from the checklist are still required before
+default-on release.

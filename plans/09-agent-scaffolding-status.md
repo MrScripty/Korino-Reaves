@@ -76,9 +76,11 @@ Date: February 27, 2026
 ### Validation Run
 
 - `dotnet build godot/UAssetViewer.csproj` succeeded.
-- `dotnet test godot/tests/UAssetViewer.Tests.csproj` restores successfully but currently fails due pre-existing test-project compile drift (`IpcDispatcher` Godot dependency + missing Diff source includes).
-- Isolated integration-harness run passed:
+- `dotnet test godot/tests/UAssetViewer.Tests.csproj` passed (`75/75`).
+- Isolated integration-harness run passed (`1/1`):
   - `dotnet test /tmp/korino-agent-capability-tests/AgentCapabilityTests.csproj`
+- Full smoke script run passed (including main tests):
+  - `./scripts/smoke-agent-rollout.sh --with-main-tests`
 
 ## Current Status
 
@@ -115,7 +117,7 @@ Date: February 27, 2026
     - follow-up backlog
     - `plans/10-agent-rollout-hardening.md`
 - Remaining:
-  - Execute smoke checklist and confirm pass criteria before default enablement.
+  - Manual in-app UI verification from checklist before release/default-on rollout.
 
 ## References
 
