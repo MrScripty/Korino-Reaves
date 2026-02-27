@@ -10,6 +10,7 @@ using System;
 using System.Threading.Tasks;
 using Godot;
 using UAssetAPI.UnrealTypes;
+using UAssetViewer.Agent;
 using UAssetViewer.Assets;
 using UAssetViewer.Bridge;
 using UAssetViewer.Bridge.Handlers;
@@ -38,8 +39,10 @@ public partial class MainController : Node
     private EditDatabase? _editDatabase;
     private Node? _cefNode;
     private IpcDispatcher? _dispatcher;
+    private AgentRuntimeContext? _agentRuntime;
     private PreviewManager? _previewManager;
     private SceneManager? _sceneManager;
+    private AssetImporter? _assetImporter;
     private TextureRect? _overlay;
     private bool _browserCreated;
 
@@ -99,6 +102,7 @@ public partial class MainController : Node
     {
         _previewManager?.ProcessFrame();
         _sceneManager?.ProcessFrame();
+        _assetImporter?.ProcessFrame();
     }
 
     public override void _Notification(int what)
@@ -290,6 +294,14 @@ public partial class MainController : Node
         _dispatcher.RegisterHandler(new ViewportHandler(_logger, _previewManager, _sceneManager));
         _dispatcher.RegisterHandler(new SceneHandler(_logger, _sceneManager));
 
+        // Create asset importer and register import handler
+        var textureExtractor = new TextureExtractor(_logger);
+        _assetImporter = new AssetImporter(
+            _logger, _dispatcher, textureExtractor,
+            new MeshExtractor(_logger),
+            new MaterialExtractor(_logger, textureExtractor));
+        _dispatcher.RegisterHandler(new ImportHandler(_logger, _dispatcher, _assetImporter));
+
         // Open/close edit database when project opens/closes
         var projectHandler = _dispatcher.GetHandler<ProjectHandler>();
         if (projectHandler != null)
@@ -327,7 +339,17 @@ public partial class MainController : Node
             _logger.Info("Selection auto-load and property push subscribed to SelectionChanged");
         }
 
+        InitializeAgentRuntime();
+
         _dispatcher.Connect(_cefNode);
+
+        // Connect log forwarding to IPC so UI Log tab receives entries.
+        // Must happen after Connect() so buffered logs don't try to send
+        // before the CefBrowserNode is wired up.
+        if (_logger is AppLogger appLogger)
+        {
+            appLogger.ConnectIpcDispatcher(_dispatcher);
+        }
     }
 
     private void HandleMouseMotion(InputEventMouseMotion motion)
@@ -522,6 +544,8 @@ public partial class MainController : Node
     {
         _logger.Info("Cleaning up...");
 
+        _agentRuntime?.Dispose();
+        _agentRuntime = null;
         _editDatabase?.Dispose();
         _sceneManager?.Dispose();
         _previewManager?.Dispose();
@@ -535,5 +559,28 @@ public partial class MainController : Node
         }
 
         _logger.Info("Cleanup complete");
+    }
+
+    private void InitializeAgentRuntime()
+    {
+        if (_dispatcher == null || _assetManager == null)
+        {
+            return;
+        }
+
+        var launcherRoot = ResolveLauncherRoot();
+        _agentRuntime = AgentRuntimeBootstrap.Create(_logger, _dispatcher, _assetManager, launcherRoot);
+        _dispatcher.RegisterHandler(_agentRuntime.Handler);
+
+        _logger.Info(
+            "Agent handler registered (initialized={Initialized}, capabilities={Capabilities})",
+            _agentRuntime.IsInitialized,
+            _agentRuntime.Capabilities != null);
+    }
+
+    private static string ResolveLauncherRoot()
+    {
+        var projectRoot = ProjectSettings.GlobalizePath("res://").TrimEnd('/');
+        return System.IO.Path.GetDirectoryName(projectRoot) ?? projectRoot;
     }
 }
