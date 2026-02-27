@@ -568,6 +568,25 @@ public partial class MainController : Node
             return;
         }
 
+        var agentEnabledRaw = System.Environment.GetEnvironmentVariable("KORINO_AGENT_ENABLED");
+        if (!TryGetEnabledFlag(agentEnabledRaw, defaultValue: true, out var agentEnabled))
+        {
+            _logger.Warning(
+                "Invalid KORINO_AGENT_ENABLED value '{Value}' - defaulting to enabled",
+                agentEnabledRaw ?? string.Empty);
+            agentEnabled = true;
+        }
+
+        if (!agentEnabled)
+        {
+            const string disabledReason = "Agent runtime disabled by KORINO_AGENT_ENABLED";
+            _dispatcher.RegisterHandler(new AgentHandler(_logger, emit: _dispatcher.Send, unavailableMessage: disabledReason));
+            _logger.Info(
+                "Agent handler registered in disabled mode (KORINO_AGENT_ENABLED={Value})",
+                agentEnabledRaw ?? "false");
+            return;
+        }
+
         var launcherRoot = ResolveLauncherRoot();
         _agentRuntime = AgentRuntimeBootstrap.Create(_logger, _dispatcher, _assetManager, launcherRoot);
         _dispatcher.RegisterHandler(_agentRuntime.Handler);
@@ -582,5 +601,40 @@ public partial class MainController : Node
     {
         var projectRoot = ProjectSettings.GlobalizePath("res://").TrimEnd('/');
         return System.IO.Path.GetDirectoryName(projectRoot) ?? projectRoot;
+    }
+
+    private static bool TryGetEnabledFlag(string? rawValue, bool defaultValue, out bool enabled)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            enabled = defaultValue;
+            return true;
+        }
+
+        var normalized = rawValue.Trim();
+        if (bool.TryParse(normalized, out var parsedBool))
+        {
+            enabled = parsedBool;
+            return true;
+        }
+
+        if (string.Equals(normalized, "1", StringComparison.Ordinal) ||
+            string.Equals(normalized, "yes", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "on", StringComparison.OrdinalIgnoreCase))
+        {
+            enabled = true;
+            return true;
+        }
+
+        if (string.Equals(normalized, "0", StringComparison.Ordinal) ||
+            string.Equals(normalized, "no", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "off", StringComparison.OrdinalIgnoreCase))
+        {
+            enabled = false;
+            return true;
+        }
+
+        enabled = defaultValue;
+        return false;
     }
 }

@@ -59,6 +59,7 @@ Agent runtime now uses an execution policy with a read-only default:
 
 Environment variables can override policy at startup:
 
+- `KORINO_AGENT_ENABLED` (feature flag; defaults to enabled when unset)
 - `KORINO_AGENT_ALLOW_WRITES` (master switch for write/edit/download)
 - `KORINO_AGENT_ALLOW_ASSET_WRITES`
 - `KORINO_AGENT_ALLOW_PROPERTY_EDITS`

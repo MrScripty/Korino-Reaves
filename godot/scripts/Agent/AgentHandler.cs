@@ -27,6 +27,7 @@ public sealed class AgentHandler : IMessageHandler
     private readonly AgentManager? _agentManager;
     private readonly Action<IpcMessage>? _emit;
     private readonly IAppLogger _logger;
+    private readonly string _unavailableMessage;
     private CancellationTokenSource? _currentCts;
     private string _currentStatus = AgentStatuses.Idle;
     private string _currentMessage = "";
@@ -34,11 +35,15 @@ public sealed class AgentHandler : IMessageHandler
     public AgentHandler(
         IAppLogger logger,
         AgentManager? agentManager = null,
-        Action<IpcMessage>? emit = null)
+        Action<IpcMessage>? emit = null,
+        string? unavailableMessage = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _agentManager = agentManager;
         _emit = emit;
+        _unavailableMessage = string.IsNullOrWhiteSpace(unavailableMessage)
+            ? "Agent not initialized - Ollama may not be running"
+            : unavailableMessage;
     }
 
     /// <inheritdoc />
@@ -68,12 +73,11 @@ public sealed class AgentHandler : IMessageHandler
     {
         if (_agentManager == null)
         {
-            var unavailable = "Agent not initialized - Ollama may not be running";
-            EmitError(message.Id, unavailable);
+            EmitError(message.Id, _unavailableMessage);
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
-                message = unavailable
+                message = _unavailableMessage
             });
         }
 
@@ -136,11 +140,11 @@ public sealed class AgentHandler : IMessageHandler
     {
         if (_agentManager == null)
         {
-            EmitError(message.Id, "Agent not initialized");
+            EmitError(message.Id, _unavailableMessage);
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
-                message = "Agent not initialized"
+                message = _unavailableMessage
             });
         }
 
@@ -189,11 +193,11 @@ public sealed class AgentHandler : IMessageHandler
     {
         if (_agentManager == null)
         {
-            EmitError(message.Id, "Agent not initialized");
+            EmitError(message.Id, _unavailableMessage);
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
-                message = "Agent not initialized"
+                message = _unavailableMessage
             });
         }
 
