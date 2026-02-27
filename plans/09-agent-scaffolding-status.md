@@ -41,6 +41,26 @@ Date: February 27, 2026
   - logs initialization state and capability availability
 - Added cleanup disposal for agent runtime context in `MainController.Cleanup()`.
 
+### Phase 3 Implementation (Complete)
+
+- Added capability-backed Semantic Kernel plugins:
+  - `ProjectPlugin.cs`
+  - `DependencyGraphPlugin.cs`
+  - `MetadataPlugin.cs`
+  - `GuiPlugin.cs`
+- Updated `AgentManager` plugin registration to include capability-backed plugins via `AgentCapabilityRegistry`.
+- Standardized agent event lifecycle in `AgentHandler`:
+  - `agent:status`
+  - `agent:step`
+  - `agent:result`
+  - `agent:error`
+- Added event emitter wiring from `AgentRuntimeBootstrap` to `AgentHandler` via dispatcher send callback.
+- Updated frontend bridge listener wiring in `agent-api.ts` to subscribe with `ipc.onAction(...)` for status, step, result, and error actions.
+- Extended TypeScript bridge contracts with:
+  - `AgentStepMessage`
+  - `AgentResultMessage`
+  - `AgentErrorMessage`
+
 ### Tests Added
 
 - Added unit tests for:
@@ -56,11 +76,6 @@ Date: February 27, 2026
 - `dotnet test godot/tests/UAssetViewer.Tests.csproj` blocked in sandbox due NuGet network access restrictions.
 
 ## Not Yet Completed
-
-### Phase 3
-
-- New capability-backed agent plugins.
-- Standardized `agent:status|step|result|error` lifecycle contract in runtime + frontend listener updates.
 
 ### Phase 4
 

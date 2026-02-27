@@ -1,34 +1,6 @@
 # Agent Scaffolding Remaining Plan
 
-As of February 27, 2026, Phases 1 and 2 are complete. This document covers remaining execution work.
-
-## Phase 3: Capability Plugins and Event Contract
-
-### Objective
-
-Expose new capabilities as explicit agent plugins and standardize event lifecycle for UI observability.
-
-### Tasks
-
-1. Add plugins in `godot/scripts/Agent/Plugins/`:
-   - `ProjectPlugin`
-   - `DependencyGraphPlugin`
-   - `MetadataPlugin`
-   - `GuiPlugin`
-2. Register these plugins through `AgentManager` using `AgentCapabilityRegistry`.
-3. Standardize agent events:
-   - `agent:status`
-   - `agent:step`
-   - `agent:result`
-   - `agent:error`
-4. Update frontend bridge usage in `svelte-ui/src/lib/bridge/agent-api.ts` to subscribe by action.
-5. Ensure responses carry correlation IDs for request/response tracking.
-
-### Acceptance Criteria
-
-- Agent can read project graph/metadata and issue selection operations through plugins only.
-- UI receives consistent status/progress/result events per request ID.
-- No direct capability calls from frontend; all through agent IPC.
+As of February 27, 2026, Phases 1-3 are complete. This document covers remaining execution work.
 
 ## Phase 4: Guardrails, Policy, and Telemetry
 
