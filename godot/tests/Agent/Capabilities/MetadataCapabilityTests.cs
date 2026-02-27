@@ -1,4 +1,5 @@
 using FluentAssertions;
+using System.Threading;
 using NSubstitute;
 using UAssetViewer.Agent.Capabilities;
 using Xunit;
@@ -49,5 +50,25 @@ public sealed class MetadataCapabilityTests
         // Assert
         result.Should().NotBeNull();
         dataAccess.Received(1).GetAssetMetadata("/tmp/project", "Game/A.uasset", 2000);
+    }
+
+    [Fact]
+    public void GetAssetMetadata_WhenCancelled_Throws()
+    {
+        // Arrange
+        var provider = Substitute.For<IProjectPathProvider>();
+        provider.CurrentProjectPath.Returns("/tmp/project");
+
+        var dataAccess = Substitute.For<IDependencyDataAccess>();
+        var capability = new MetadataCapability(provider, dataAccess, new TestLogger());
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act
+        var act = () => capability.GetAssetMetadata("Game/A.uasset", ct: cts.Token);
+
+        // Assert
+        act.Should().Throw<OperationCanceledException>();
+        dataAccess.DidNotReceiveWithAnyArgs().GetAssetMetadata(default!, default!, default, default);
     }
 }

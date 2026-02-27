@@ -34,6 +34,7 @@
     <Compile Include="../scripts/Bridge/Handlers/TestHandler.cs" />
     <Compile Include="../scripts/Services/**/*.cs" />
     <Compile Include="../scripts/Agent/AgentCapabilityRegistry.cs" />
+    <Compile Include="../scripts/Agent/AgentExecutionPolicy.cs" />
     <Compile Include="../scripts/Agent/Capabilities/CapabilityModels.cs" />
     <Compile Include="../scripts/Agent/Capabilities/IProjectPathProvider.cs" />
     <Compile Include="../scripts/Agent/Capabilities/IProjectExplorerCapability.cs" />

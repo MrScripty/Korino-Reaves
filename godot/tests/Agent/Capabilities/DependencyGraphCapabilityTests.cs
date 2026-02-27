@@ -1,4 +1,5 @@
 using FluentAssertions;
+using System.Threading;
 using NSubstitute;
 using UAssetViewer.Agent.Capabilities;
 using Xunit;
@@ -68,5 +69,25 @@ public sealed class DependencyGraphCapabilityTests
         // Assert
         result.Should().ContainSingle();
         result[0].PropertyName.Should().Be("Health");
+    }
+
+    [Fact]
+    public void GetDependencies_WhenCancelled_Throws()
+    {
+        // Arrange
+        var provider = Substitute.For<IProjectPathProvider>();
+        provider.CurrentProjectPath.Returns("/tmp/project");
+
+        var dataAccess = Substitute.For<IDependencyDataAccess>();
+        var capability = new DependencyGraphCapability(provider, dataAccess, new TestLogger());
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act
+        var act = () => capability.GetDependencies("Game/A.uasset", ct: cts.Token);
+
+        // Assert
+        act.Should().Throw<OperationCanceledException>();
+        dataAccess.DidNotReceiveWithAnyArgs().GetDependencies(default!, default!, default, default);
     }
 }
