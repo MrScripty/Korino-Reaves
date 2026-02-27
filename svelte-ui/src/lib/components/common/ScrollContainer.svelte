@@ -23,7 +23,7 @@
         children,
         direction = 'vertical',
         class: className = '',
-        viewport = $bindable(null),
+        viewport = $bindable(),
     }: Props = $props();
 
     const MIN_THUMB = 20;

@@ -12,7 +12,7 @@
     import type { SceneActor } from '$lib/bridge/types';
 
     let showMeshOnly = $state(false);
-    let actorListEl: HTMLDivElement | undefined = $state();
+    let actorListEl = $state<HTMLDivElement | null>(null);
 
     function getActorIcon(actor: SceneActor): string {
         if (actor.className.includes('StaticMesh')) return 'mesh';
