@@ -2,7 +2,7 @@
 
 As of February 27, 2026, Phases 1-3 are complete. This document covers remaining execution work.
 
-## Phase 4: Guardrails, Policy, and Telemetry (In Progress)
+## Phase 4: Guardrails, Policy, and Telemetry (Complete)
 
 ### Objective
 
@@ -26,16 +26,16 @@ Constrain agent behavior and make operations auditable.
    - cancellation/errors
 4. Completed:
    - Added cancellation token propagation across capability and dependency data-access calls.
-5. Remaining:
-   - Add integration tests for complete path:
-   - open project -> dependency scan -> metadata query -> GUI selection.
+5. Completed:
+   - Added integration test for complete path:
+   - open project -> dependency scan/query -> metadata query -> GUI selection.
 
 ### Acceptance Criteria
 
 - Side-effecting actions are blocked unless explicitly enabled.
 - Large queries are bounded with deterministic behavior.
 - Telemetry is sufficient for troubleshooting and audit.
-- End-to-end integration path test still pending.
+- End-to-end integration path test is covered.
 
 ## Phase 5: Rollout and Hardening
 

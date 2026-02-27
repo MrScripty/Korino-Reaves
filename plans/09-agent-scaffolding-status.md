@@ -68,16 +68,21 @@ Date: February 27, 2026
   - dependency graph capability
   - metadata capability
   - GUI selection capability
+- Added end-to-end capability integration test for:
+  - open project -> dependency query -> metadata query -> GUI selection
+  - `godot/tests/Agent/AgentScaffoldingIntegrationTests.cs`
 - Updated test project includes to compile new capability sources.
 
 ### Validation Run
 
 - `dotnet build godot/UAssetViewer.csproj` succeeded.
-- `dotnet test godot/tests/UAssetViewer.Tests.csproj` blocked in sandbox due NuGet network access restrictions.
+- `dotnet test godot/tests/UAssetViewer.Tests.csproj` restores successfully but currently fails due pre-existing test-project compile drift (`IpcDispatcher` Godot dependency + missing Diff source includes).
+- Isolated integration-harness run passed:
+  - `dotnet test /tmp/korino-agent-capability-tests/AgentCapabilityTests.csproj`
 
-## Not Yet Completed
+## Current Status
 
-### Phase 4 (In Progress)
+### Phase 4 (Complete)
 
 - Implemented `AgentExecutionPolicy` with:
   - read-only defaults for asset writes/property edits/model downloads
@@ -96,8 +101,8 @@ Date: February 27, 2026
 - Added unit tests for:
   - `AgentExecutionPolicy` defaults and guards
   - cancellation behavior in dependency/metadata capabilities
-- Remaining in Phase 4:
-  - end-to-end integration test path (open project -> scan -> metadata query -> GUI selection)
+- Added end-to-end integration test coverage for:
+  - open project -> scan/dependency query -> metadata query -> GUI selection
 
 ### Phase 5
 
