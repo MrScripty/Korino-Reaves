@@ -1,35 +1,6 @@
 # Agent Scaffolding Remaining Plan
 
-As of February 27, 2026, Phase 1 scaffolding is complete. This document covers remaining execution work.
-
-## Phase 2: Runtime Wiring
-
-### Objective
-
-Integrate capability scaffolding into app runtime without enabling autonomous behavior by default.
-
-### Tasks
-
-1. Add `AgentRuntimeBootstrap` (or equivalent) in `godot/scripts/Agent/` to compose:
-   - `ProjectHandlerPathProvider`
-   - `ProjectExplorerCapability`
-   - `DependencyDatabaseDataAccess`
-   - `DependencyGraphCapability`
-   - `MetadataCapability`
-   - `SelectionHandlerController`
-   - `IpcSelectionBroadcaster`
-   - `GuiSelectionCapability`
-   - `AgentCapabilityRegistry`
-2. Register `AgentHandler` in `MainController.SetupDispatcher()`.
-3. Add a safe startup path:
-   - if model/runtime unavailable, handler still returns deterministic "not initialized" status.
-4. Keep current IPC handlers unchanged for existing UI workflows.
-
-### Acceptance Criteria
-
-- Agent message type routes successfully through dispatcher.
-- Existing project/tree/dependency/property workflows behave unchanged.
-- App starts cleanly with and without local model runtime.
+As of February 27, 2026, Phases 1 and 2 are complete. This document covers remaining execution work.
 
 ## Phase 3: Capability Plugins and Event Contract
 

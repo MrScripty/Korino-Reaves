@@ -28,6 +28,19 @@ Date: February 27, 2026
 - Extended `SelectionHandler` with public `SelectNode(string? id)` API to support capability-based selection mutation.
 - Added capability README for discoverability and maintenance.
 
+### Phase 2 Implementation (Complete)
+
+- Added runtime bootstrap and context:
+  - `godot/scripts/Agent/AgentRuntimeBootstrap.cs`
+  - `godot/scripts/Agent/AgentRuntimeContext.cs`
+- Added safe fallback model library when pumas-core is unavailable:
+  - `godot/scripts/Agent/NoOpModelLibrary.cs`
+- Integrated runtime wiring in `MainController.SetupDispatcher()`:
+  - composes agent runtime context
+  - registers `AgentHandler` in dispatcher
+  - logs initialization state and capability availability
+- Added cleanup disposal for agent runtime context in `MainController.Cleanup()`.
+
 ### Tests Added
 
 - Added unit tests for:
@@ -43,11 +56,6 @@ Date: February 27, 2026
 - `dotnet test godot/tests/UAssetViewer.Tests.csproj` blocked in sandbox due NuGet network access restrictions.
 
 ## Not Yet Completed
-
-### Phase 2
-
-- Runtime composition/bootstrap for capability registry.
-- `AgentHandler` registration in `MainController`.
 
 ### Phase 3
 
