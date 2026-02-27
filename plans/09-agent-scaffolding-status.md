@@ -106,7 +106,10 @@ Date: February 27, 2026
 
 ### Phase 5
 
-- Feature-flagged rollout, hardening checklist, and operational docs.
+- In progress:
+  - Added runtime feature flag `KORINO_AGENT_ENABLED` for safe enable/disable rollout.
+- Remaining:
+  - Hardening checklist and operational docs.
 
 ## References
 

@@ -45,7 +45,9 @@ Ship incrementally with low disruption to continued Korino development.
 
 ### Tasks
 
-1. Add feature flag for agent runtime enablement.
+1. Completed:
+   - Added `KORINO_AGENT_ENABLED` feature flag for agent runtime enablement.
+   - Disabled mode still registers `AgentHandler` with explicit unavailable reason.
 2. Document operational prerequisites and failure modes.
 3. Create smoke-test checklist for regressions in:
    - tree behavior
