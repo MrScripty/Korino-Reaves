@@ -8,7 +8,13 @@
  */
 
 import { ipc } from './ipc';
-import type { AgentMessage, AgentCommand, AgentStatus } from './types';
+import type {
+  AgentErrorMessage,
+  AgentMessage,
+  AgentResultMessage,
+  AgentStatus,
+  AgentStepMessage,
+} from './types';
 
 // =============================================================================
 // Agent State (received from C# backend)
@@ -26,12 +32,38 @@ export let agentProgress = $state<number>(0);
 /** Current action being performed by the agent. */
 export let currentAction = $state<string | null>(null);
 
-// Subscribe to agent status updates from C# backend
-ipc.on('agent', (data: AgentMessage) => {
+// Subscribe to status updates from C# backend
+ipc.onAction<AgentMessage>('agent', 'status', (data) => {
   agentStatus = data.status;
   agentMessage = data.message;
   agentProgress = data.progress ?? 0;
   currentAction = data.currentAction ?? null;
+});
+
+// Subscribe to incremental steps for the in-flight operation
+ipc.onAction<AgentStepMessage>('agent', 'step', (data) => {
+  currentAction = data.step;
+  agentMessage = data.message;
+  if (typeof data.progress === 'number') {
+    agentProgress = data.progress;
+  }
+});
+
+// Subscribe to final result payloads
+ipc.onAction<AgentResultMessage>('agent', 'result', (data) => {
+  agentStatus = data.status;
+  agentMessage = data.message;
+  currentAction = null;
+  if (data.status === 'complete' || data.status === 'idle') {
+    agentProgress = 100;
+  }
+});
+
+// Subscribe to error payloads
+ipc.onAction<AgentErrorMessage>('agent', 'error', (data) => {
+  agentStatus = 'error';
+  agentMessage = data.message;
+  currentAction = null;
 });
 
 // =============================================================================

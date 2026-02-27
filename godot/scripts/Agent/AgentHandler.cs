@@ -25,15 +25,20 @@ public sealed class AgentHandler : IMessageHandler
     };
 
     private readonly AgentManager? _agentManager;
+    private readonly Action<IpcMessage>? _emit;
     private readonly IAppLogger _logger;
     private CancellationTokenSource? _currentCts;
     private string _currentStatus = AgentStatuses.Idle;
     private string _currentMessage = "";
 
-    public AgentHandler(IAppLogger logger, AgentManager? agentManager = null)
+    public AgentHandler(
+        IAppLogger logger,
+        AgentManager? agentManager = null,
+        Action<IpcMessage>? emit = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _agentManager = agentManager;
+        _emit = emit;
     }
 
     /// <inheritdoc />
@@ -63,16 +68,19 @@ public sealed class AgentHandler : IMessageHandler
     {
         if (_agentManager == null)
         {
+            var unavailable = "Agent not initialized - Ollama may not be running";
+            EmitError(message.Id, unavailable);
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
-                message = "Agent not initialized - Ollama may not be running"
+                message = unavailable
             });
         }
 
         var payload = DeserializePayload<ExecutePayload>(message.Payload);
         if (payload?.Prompt == null)
         {
+            EmitError(message.Id, "Missing 'prompt' in payload");
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
@@ -81,14 +89,15 @@ public sealed class AgentHandler : IMessageHandler
         }
 
         _currentCts = new CancellationTokenSource();
-        UpdateStatus(AgentStatuses.Thinking, "Processing prompt...");
+        UpdateStatus(message.Id, AgentStatuses.Thinking, "Processing prompt...");
+        EmitStep(message.Id, "execute", "Invoking model and tool calls");
 
         try
         {
             var result = await _agentManager.ExecuteAsync(
                 payload.Prompt, _currentCts.Token).ConfigureAwait(false);
 
-            UpdateStatus(AgentStatuses.Complete, "Done");
+            UpdateStatus(message.Id, AgentStatuses.Complete, "Done");
 
             return CreateResponse(message.Id, "result", new
             {
@@ -98,8 +107,8 @@ public sealed class AgentHandler : IMessageHandler
         }
         catch (OperationCanceledException)
         {
-            UpdateStatus(AgentStatuses.Idle, "Cancelled");
-            return CreateResponse(message.Id, "cancelled", new
+            UpdateStatus(message.Id, AgentStatuses.Idle, "Cancelled");
+            return CreateResponse(message.Id, "result", new
             {
                 status = AgentStatuses.Idle,
                 message = "Execution cancelled"
@@ -108,7 +117,8 @@ public sealed class AgentHandler : IMessageHandler
         catch (Exception ex)
         {
             _logger.Error(ex, "Agent execute failed");
-            UpdateStatus(AgentStatuses.Error, ex.Message);
+            UpdateStatus(message.Id, AgentStatuses.Error, ex.Message);
+            EmitError(message.Id, ex.Message);
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
@@ -126,6 +136,7 @@ public sealed class AgentHandler : IMessageHandler
     {
         if (_agentManager == null)
         {
+            EmitError(message.Id, "Agent not initialized");
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
@@ -136,6 +147,7 @@ public sealed class AgentHandler : IMessageHandler
         var payload = DeserializePayload<PortModPayload>(message.Payload);
         if (payload == null)
         {
+            EmitError(message.Id, "Invalid portMod payload");
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
@@ -144,7 +156,8 @@ public sealed class AgentHandler : IMessageHandler
         }
 
         _currentCts = new CancellationTokenSource();
-        UpdateStatus(AgentStatuses.Executing, "Porting mod...");
+        UpdateStatus(message.Id, AgentStatuses.Executing, "Porting mod...");
+        EmitStep(message.Id, "portMod", "Running mod porting workflow");
 
         var workflow = new ModPortingWorkflow(_agentManager, _logger);
         var result = await workflow.ExecuteAsync(
@@ -154,18 +167,29 @@ public sealed class AgentHandler : IMessageHandler
             payload.OutputPath,
             _currentCts.Token).ConfigureAwait(false);
 
-        UpdateStatus(result.Success ? AgentStatuses.Complete : AgentStatuses.Error, result.Message);
+        var resultStatus = result.Success ? AgentStatuses.Complete : AgentStatuses.Error;
+        UpdateStatus(message.Id, resultStatus, result.Message);
+        if (!result.Success)
+        {
+            EmitError(message.Id, result.Error ?? result.Message);
+        }
 
         _currentCts?.Dispose();
         _currentCts = null;
 
-        return CreateResponse(message.Id, "portModResult", result);
+        return CreateResponse(message.Id, "result", new
+        {
+            status = resultStatus,
+            message = result.Message,
+            data = result
+        });
     }
 
     private async Task<IpcMessage?> HandleExplore(IpcMessage message)
     {
         if (_agentManager == null)
         {
+            EmitError(message.Id, "Agent not initialized");
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
@@ -176,6 +200,7 @@ public sealed class AgentHandler : IMessageHandler
         var payload = DeserializePayload<ExplorePayload>(message.Payload);
         if (payload == null)
         {
+            EmitError(message.Id, "Invalid explore payload");
             return CreateResponse(message.Id, "error", new
             {
                 status = AgentStatuses.Error,
@@ -184,18 +209,19 @@ public sealed class AgentHandler : IMessageHandler
         }
 
         _currentCts = new CancellationTokenSource();
-        UpdateStatus(AgentStatuses.Thinking, "Exploring asset...");
+        UpdateStatus(message.Id, AgentStatuses.Thinking, "Exploring asset...");
+        EmitStep(message.Id, "explore", "Running asset explorer workflow");
 
         var workflow = new AssetExplorerWorkflow(_agentManager, _logger);
         var result = await workflow.ExploreAsync(
             payload.AssetPath, payload.Question, _currentCts.Token).ConfigureAwait(false);
 
-        UpdateStatus(AgentStatuses.Complete, "Done");
+        UpdateStatus(message.Id, AgentStatuses.Complete, "Done");
 
         _currentCts?.Dispose();
         _currentCts = null;
 
-        return CreateResponse(message.Id, "exploreResult", new
+        return CreateResponse(message.Id, "result", new
         {
             status = AgentStatuses.Complete,
             message = result
@@ -205,9 +231,9 @@ public sealed class AgentHandler : IMessageHandler
     private IpcMessage HandleCancel(IpcMessage message)
     {
         _currentCts?.Cancel();
-        UpdateStatus(AgentStatuses.Idle, "Cancelled");
+        UpdateStatus(message.Id, AgentStatuses.Idle, "Cancelled");
 
-        return CreateResponse(message.Id, "cancelled", new
+        return CreateResponse(message.Id, "result", new
         {
             status = AgentStatuses.Idle,
             message = "Operation cancelled"
@@ -216,17 +242,59 @@ public sealed class AgentHandler : IMessageHandler
 
     private IpcMessage HandleGetStatus(IpcMessage message)
     {
-        return CreateResponse(message.Id, "status", new AgentMessage(
-            AgentId: "main",
-            Status: _currentStatus,
-            Message: _currentMessage
-        ))!;
+        return CreateResponse(message.Id, "status", CreateAgentMessage(
+            _currentStatus,
+            _currentMessage));
     }
 
-    private void UpdateStatus(string status, string message)
+    private void UpdateStatus(string? requestId, string status, string message)
     {
         _currentStatus = status;
         _currentMessage = message;
+        EmitStatus(requestId, status, message);
+    }
+
+    private void EmitStatus(string? requestId, string status, string message)
+    {
+        Emit("status", CreateAgentMessage(status, message), requestId);
+    }
+
+    private void EmitStep(string? requestId, string step, string message)
+    {
+        Emit("step", new
+        {
+            step,
+            message,
+            status = _currentStatus
+        }, requestId);
+    }
+
+    private void EmitError(string? requestId, string message)
+    {
+        Emit("error", new
+        {
+            status = AgentStatuses.Error,
+            message
+        }, requestId);
+    }
+
+    private AgentMessage CreateAgentMessage(string status, string message)
+    {
+        return new AgentMessage(
+            AgentId: "main",
+            Status: status,
+            Message: message
+        );
+    }
+
+    private void Emit(string action, object payload, string? requestId = null)
+    {
+        _emit?.Invoke(new IpcMessage(
+            MessageTypes.Agent,
+            action,
+            payload,
+            requestId,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
     }
 
     private static IpcMessage CreateResponse(string? id, string action, object payload)

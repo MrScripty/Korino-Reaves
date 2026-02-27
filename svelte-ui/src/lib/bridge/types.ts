@@ -28,7 +28,9 @@ export type MessageType =
     | 'pak'        // PAK archive operations (import, list)
     | 'project'    // Project operations (open, list)
     | 'fs'         // Filesystem operations (list, navigate)
+    | 'dependency'  // Asset dependency graph queries
     | 'error'      // Error responses
+    | 'log'        // Application log messages
     | 'test';      // Testing/ping-pong messages
 
 /**
@@ -320,6 +322,44 @@ export interface AgentMessage {
 }
 
 /**
+ * Incremental step event emitted during an agent operation.
+ */
+export interface AgentStepMessage {
+    /** Logical step name (e.g. execute, explore, portMod) */
+    step: string;
+    /** Human-readable description for the current step */
+    message: string;
+    /** Current overall status */
+    status?: AgentStatus;
+    /** Optional progress percentage */
+    progress?: number;
+}
+
+/**
+ * Final result payload for an agent operation.
+ */
+export interface AgentResultMessage {
+    /** Final status */
+    status: AgentStatus;
+    /** Result summary text */
+    message: string;
+    /** Optional structured result */
+    data?: unknown;
+}
+
+/**
+ * Error payload for an agent operation.
+ */
+export interface AgentErrorMessage {
+    /** Always 'error' */
+    status: 'error';
+    /** Human-readable error text */
+    message: string;
+    /** Optional diagnostic payload */
+    details?: unknown;
+}
+
+/**
  * Command to send to an AI agent.
  */
 export interface AgentCommand {
@@ -540,6 +580,18 @@ export interface SceneActor {
     hasMesh: boolean;
     /** Whether the mesh has been loaded into the viewport */
     isLoaded: boolean;
+    /** Which sub-level this actor belongs to */
+    levelName: string;
+}
+
+/**
+ * Summary of a discovered sub-level in a multi-level scene.
+ */
+export interface SubLevelSummary {
+    name: string;
+    actorCount: number;
+    meshCount: number;
+    source: string;
 }
 
 /**
@@ -550,6 +602,205 @@ export interface SceneInfo {
     actorCount: number;
     /** Name of the loaded level */
     levelName: string;
+    /** Number of sub-levels loaded (1 for single-level) */
+    subLevelCount?: number;
+}
+
+// =============================================================================
+// Log Types
+// =============================================================================
+
+/** A single log entry forwarded from the C# backend. */
+export interface LogEntry {
+    level: 'verbose' | 'debug' | 'information' | 'warning' | 'error' | 'fatal';
+    message: string;
+    timestamp: number;
+    exception?: string;
+}
+
+// =============================================================================
+// Dependency Graph Types
+// =============================================================================
+
+/**
+ * A single directed reference from one asset to another.
+ */
+export interface DependencyReference {
+    /** Relative path of the referenced asset */
+    path: string;
+    /** Import class name (e.g., "StaticMesh", "Material", "LevelStreamingKismet") */
+    refType: string;
+}
+
+/**
+ * Dependency graph statistics.
+ */
+export interface DependencyStats {
+    /** Whether a dependency database exists */
+    exists: boolean;
+    /** Number of asset nodes in the graph */
+    assetCount?: number;
+    /** Number of directed edges */
+    edgeCount?: number;
+    /** Engine version used during scan */
+    engineVersion?: string;
+    /** ISO timestamp of when the scan completed */
+    scannedAt?: string;
+}
+
+/**
+ * Progress update during dependency scanning.
+ */
+export interface DependencyScanProgress {
+    current: number;
+    total: number;
+    currentFile: string;
+    phase: 'enumerating' | 'scanning' | 'writing' | 'complete';
+}
+
+// =============================================================================
+// Data Table Types (per-asset DB metadata)
+// =============================================================================
+
+/** Asset info row from the assets table */
+export interface DbAssetInfo {
+    id: number;
+    path: string;
+    assetType: string;
+    objectVersion: string | null;
+    objectVersionUE5: string | null;
+    isUnversioned: boolean;
+    packageFlags: number;
+    engineMajor: number | null;
+    engineMinor: number | null;
+    enginePatch: number | null;
+    engineChangelist: number | null;
+    engineBranch: string | null;
+    importCount: number;
+    exportCount: number;
+}
+
+/** Import table entry */
+export interface DbImportEntry {
+    id: number;
+    importIndex: number;
+    objectName: string;
+    className: string;
+    classPackage: string | null;
+    outerIndex: number | null;
+    packageName: string | null;
+    isOptional: boolean;
+}
+
+/** Export table entry */
+export interface DbExportEntry {
+    id: number;
+    exportIndex: number;
+    objectName: string;
+    className: string | null;
+    superName: string | null;
+    outerIndex: number | null;
+    objectFlags: number;
+    serialSize: number;
+    isAsset: boolean;
+    notForClient: boolean;
+    notForServer: boolean;
+    isForcedExport: boolean;
+    extrasSize: number;
+}
+
+/** Flat property entry with export context */
+export interface DbFlatPropertyEntry {
+    id: number;
+    exportId: number;
+    exportIndex: number;
+    exportName: string;
+    parentId: number | null;
+    sortOrder: number;
+    name: string;
+    propertyType: string;
+    structType: string | null;
+    arrayIndex: number;
+    valueInt: number | null;
+    valueFloat: number | null;
+    valueText: string | null;
+    valueRef: string | null;
+}
+
+/** Custom version entry */
+export interface DbCustomVersionEntry {
+    id: number;
+    assetId: number;
+    guid: string;
+    friendlyName: string | null;
+    version: number;
+}
+
+/** Edge (dependency) entry */
+export interface DbEdgeEntry {
+    id: number;
+    targetPath: string;
+    refType: string;
+}
+
+/** Export dependency entry */
+export interface DbExportDependencyEntry {
+    id: number;
+    exportId: number;
+    exportIndex: number;
+    exportName: string | null;
+    depType: string;
+    targetIndex: number;
+}
+
+/** Gatherable text entry */
+export interface DbGatherableTextEntry {
+    id: number;
+    namespace: string | null;
+    sourceString: string | null;
+    keyName: string | null;
+    siteDescription: string | null;
+    isEditorOnly: boolean;
+}
+
+/** Searchable name entry */
+export interface DbSearchableNameEntry {
+    id: number;
+    exportIndex: number;
+    name: string;
+}
+
+/** World tile info entry */
+export interface DbWorldTileInfoEntry {
+    id: number;
+    positionX: number | null;
+    positionY: number | null;
+    positionZ: number | null;
+    absPositionX: number | null;
+    absPositionY: number | null;
+    absPositionZ: number | null;
+    layerName: string | null;
+    streamingDistance: number | null;
+    distanceStreamingEnabled: boolean;
+    parentTilePackage: string | null;
+    zOrder: number | null;
+    hideInTileView: boolean;
+    lodListJson: string | null;
+}
+
+/** Combined response from getAssetTables */
+export interface AssetTablesPayload {
+    assetPath: string;
+    assetInfo: DbAssetInfo;
+    imports: DbImportEntry[];
+    exports: DbExportEntry[];
+    properties: DbFlatPropertyEntry[];
+    customVersions: DbCustomVersionEntry[];
+    edges: DbEdgeEntry[];
+    gatherableText: DbGatherableTextEntry[];
+    searchableNames: DbSearchableNameEntry[];
+    worldTileInfo: DbWorldTileInfoEntry[];
+    exportDependencies: DbExportDependencyEntry[];
 }
 
 // =============================================================================

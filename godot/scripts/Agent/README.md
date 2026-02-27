@@ -24,6 +24,10 @@ including mod porting between game versions.
 - `EditPlugin.cs` - Property reading and writing
 - `DiffPlugin.cs` - Asset comparison and conflict detection
 - `ModelPlugin.cs` - AI model library management via pumas-core
+- `ProjectPlugin.cs` - Project file tree exploration
+- `DependencyGraphPlugin.cs` - Dependency graph traversal and search
+- `MetadataPlugin.cs` - Asset metadata snapshot queries
+- `GuiPlugin.cs` - GUI selection and expansion controls
 
 ### Workflows
 

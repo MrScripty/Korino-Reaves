@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Ollama;
+using UAssetViewer.Agent.Capabilities;
 using UAssetViewer.Agent.Plugins;
 using UAssetViewer.Assets;
 using UAssetViewer.Infrastructure;
@@ -42,6 +43,7 @@ public sealed class AgentManager : IDisposable
         IAssetService assetService,
         ITreeService treeService,
         PropertyService propertyService,
+        AgentCapabilityRegistry? capabilityRegistry,
         IModelLibrary modelLibrary,
         IAppLogger logger)
     {
@@ -67,6 +69,14 @@ public sealed class AgentManager : IDisposable
         builder.Plugins.AddFromObject(new NavigationPlugin(treeService), "Navigation");
         builder.Plugins.AddFromObject(new EditPlugin(propertyService, assetService), "Edit");
         builder.Plugins.AddFromObject(new ModelPlugin(modelLibrary), "Model");
+
+        if (capabilityRegistry != null)
+        {
+            builder.Plugins.AddFromObject(new ProjectPlugin(capabilityRegistry.ProjectExplorer), "Project");
+            builder.Plugins.AddFromObject(new DependencyGraphPlugin(capabilityRegistry.DependencyGraph), "DependencyGraph");
+            builder.Plugins.AddFromObject(new MetadataPlugin(capabilityRegistry.Metadata), "Metadata");
+            builder.Plugins.AddFromObject(new GuiPlugin(capabilityRegistry.GuiSelection), "Gui");
+        }
 
         var kernel = builder.Build();
 

@@ -34,8 +34,8 @@ public static class AgentRuntimeBootstrap
 
         var capabilities = BuildCapabilities(logger, dispatcher);
         var modelLibrary = InitializeModelLibrary(logger, launcherRoot);
-        var manager = InitializeManager(logger, assetManager, modelLibrary);
-        var handler = new AgentHandler(logger, manager);
+        var manager = InitializeManager(logger, assetManager, capabilities, modelLibrary);
+        var handler = new AgentHandler(logger, manager, dispatcher.Send);
 
         logger.Info(
             "Agent runtime bootstrap complete (manager={Manager}, capabilities={Capabilities}, modelLibraryAvailable={ModelAvailable})",
@@ -86,7 +86,11 @@ public static class AgentRuntimeBootstrap
         }
     }
 
-    private static AgentManager? InitializeManager(IAppLogger logger, AssetManager assetManager, IModelLibrary modelLibrary)
+    private static AgentManager? InitializeManager(
+        IAppLogger logger,
+        AssetManager assetManager,
+        AgentCapabilityRegistry? capabilities,
+        IModelLibrary modelLibrary)
     {
         try
         {
@@ -96,6 +100,7 @@ public static class AgentRuntimeBootstrap
                 assetManager,
                 assetManager,
                 propertyService,
+                capabilities,
                 modelLibrary,
                 logger);
             return manager;
