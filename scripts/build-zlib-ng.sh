@@ -69,12 +69,18 @@ LIB_DIR="$PROJECT_ROOT/lib"
 mkdir -p "$LIB_DIR"
 cp build/libz-ng.so* "$LIB_DIR/" 2>/dev/null || true
 
+# Copy to tracked native runtimes directory (committed to git)
+RUNTIMES_DIR="$PROJECT_ROOT/godot/native/runtimes/linux-x64/native"
+mkdir -p "$RUNTIMES_DIR"
+cp "build/libz-ng.so.${ZLIB_NG_VERSION}" "$RUNTIMES_DIR/libz-ng.so.2"
+
 echo ""
 echo "=== Build complete ==="
 echo "Libraries copied to:"
 echo "  - $OUTPUT_DIR"
 echo "  - $LIB_DIR"
+echo "  - $RUNTIMES_DIR (git-tracked)"
 echo ""
 echo "Library files:"
 ls -la "$OUTPUT_DIR"/libz-ng.so* 2>/dev/null || echo "  (check $LIB_DIR)"
-ls -la "$LIB_DIR"/libz-ng.so* 2>/dev/null || true
+ls -la "$RUNTIMES_DIR"/libz-ng.so* 2>/dev/null || true

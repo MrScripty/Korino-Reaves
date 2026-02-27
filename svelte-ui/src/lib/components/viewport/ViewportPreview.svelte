@@ -13,8 +13,21 @@
     let lastX = 0;
     let lastY = 0;
 
+    // Click-vs-drag detection
+    let mouseDownX = 0;
+    let mouseDownY = 0;
+    let didDrag = false;
+    const CLICK_THRESHOLD = 3;
+
+    let imgElement: HTMLImageElement | undefined = $state();
+
     function handleMouseDown(e: MouseEvent) {
         if (!viewport.has3DControls) return;
+
+        mouseDownX = e.clientX;
+        mouseDownY = e.clientY;
+        didDrag = false;
+
         if (e.button === 0) {
             dragMode = 'orbit';
         } else if (e.button === 2) {
@@ -30,6 +43,17 @@
         if (dragMode === 'none') return;
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
+
+        if (!didDrag) {
+            const totalDx = e.clientX - mouseDownX;
+            const totalDy = e.clientY - mouseDownY;
+            if (Math.abs(totalDx) > CLICK_THRESHOLD || Math.abs(totalDy) > CLICK_THRESHOLD) {
+                didDrag = true;
+            } else {
+                return;
+            }
+        }
+
         lastX = e.clientX;
         lastY = e.clientY;
         if (dragMode === 'orbit') {
@@ -39,8 +63,53 @@
         }
     }
 
-    function handleMouseUp() {
+    function handleMouseUp(e: MouseEvent) {
+        const wasDragMode = dragMode;
         dragMode = 'none';
+
+        if (wasDragMode === 'orbit' && !didDrag && viewport.isScene && imgElement) {
+            handleViewportClick(e);
+        }
+    }
+
+    function handleViewportClick(e: MouseEvent) {
+        if (!imgElement) return;
+
+        const rect = imgElement.getBoundingClientRect();
+        const imgNaturalWidth = imgElement.naturalWidth;
+        const imgNaturalHeight = imgElement.naturalHeight;
+        if (imgNaturalWidth === 0 || imgNaturalHeight === 0) return;
+
+        // Account for object-fit: contain letterboxing/pillarboxing
+        const elemAspect = rect.width / rect.height;
+        const imgAspect = imgNaturalWidth / imgNaturalHeight;
+
+        let renderedWidth: number, renderedHeight: number;
+        let offsetX: number, offsetY: number;
+
+        if (elemAspect > imgAspect) {
+            renderedHeight = rect.height;
+            renderedWidth = rect.height * imgAspect;
+            offsetX = (rect.width - renderedWidth) / 2;
+            offsetY = 0;
+        } else {
+            renderedWidth = rect.width;
+            renderedHeight = rect.width / imgAspect;
+            offsetX = 0;
+            offsetY = (rect.height - renderedHeight) / 2;
+        }
+
+        const relX = e.clientX - rect.left - offsetX;
+        const relY = e.clientY - rect.top - offsetY;
+        const normalizedX = relX / renderedWidth;
+        const normalizedY = relY / renderedHeight;
+
+        if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) {
+            scene.deselectActor();
+            return;
+        }
+
+        scene.pickActor(normalizedX, normalizedY);
     }
 
     function handleContextMenu(e: MouseEvent) {
@@ -56,7 +125,11 @@
 
     function handleDblClick() {
         if (!viewport.has3DControls) return;
-        viewport.resetCamera();
+        if (viewport.isScene && scene.selectedActorId) {
+            scene.focusActor(scene.selectedActorId);
+        } else {
+            viewport.resetCamera();
+        }
     }
 
     function handleTimeOfDay(e: Event) {
@@ -94,6 +167,7 @@
         </div>
     {:else if viewport.hasPreview}
         <img
+            bind:this={imgElement}
             src={viewport.previewData}
             alt={viewport.assetName ?? 'Asset preview'}
             class="preview-image"

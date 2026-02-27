@@ -13,5 +13,6 @@ public record SceneActor(
     [property: JsonPropertyName("meshPath")] string? MeshPath,
     [property: JsonPropertyName("position")] float[]? Position,
     [property: JsonPropertyName("hasMesh")] bool HasMesh,
-    [property: JsonPropertyName("isLoaded")] bool IsLoaded
+    [property: JsonPropertyName("isLoaded")] bool IsLoaded,
+    [property: JsonPropertyName("levelName")] string LevelName
 );

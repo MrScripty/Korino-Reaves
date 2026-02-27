@@ -20,17 +20,25 @@ class TreeVM {
     filterQuery = $state('');
     editedFilePaths = $state<Set<string>>(new Set());
 
+    expandedSet = $derived(new Set(this.selection.expandedIds));
+
     get selectedNode(): TreeNode | null {
         if (!this.selection.selectedId) return null;
         return findNodeById(this.nodes, this.selection.selectedId);
     }
 
+    /** Returns nodes filtered by filterQuery, preserving ancestor structure. */
+    get filteredNodes(): TreeNode[] {
+        if (!this.filterQuery) return this.nodes;
+        return filterTree(this.nodes, this.filterQuery.toLowerCase());
+    }
+
     get visibleNodeCount(): number {
-        return countVisibleNodes(this.nodes, this.selection.expandedIds);
+        return countVisibleNodes(this.filteredNodes, this.expandedSet);
     }
 
     get hasExpanded(): boolean {
-        return this.selection.expandedIds.length > 0;
+        return this.expandedSet.size > 0;
     }
 
     selectNode(id: string): void {
@@ -43,7 +51,7 @@ class TreeVM {
 
     toggleExpand(id: string): void {
         ipc.send({
-            type: 'tree',
+            type: 'selection',
             action: 'toggle',
             payload: { id },
         });
@@ -51,7 +59,7 @@ class TreeVM {
 
     expandNode(id: string): void {
         ipc.send({
-            type: 'tree',
+            type: 'selection',
             action: 'expand',
             payload: { id },
         });
@@ -59,7 +67,7 @@ class TreeVM {
 
     collapseNode(id: string): void {
         ipc.send({
-            type: 'tree',
+            type: 'selection',
             action: 'collapse',
             payload: { id },
         });
@@ -68,7 +76,7 @@ class TreeVM {
     expandAll(): void {
         const ids = collectExpandableIds(this.nodes);
         ipc.send({
-            type: 'tree',
+            type: 'selection',
             action: 'expandAll',
             payload: { ids },
         });
@@ -76,7 +84,7 @@ class TreeVM {
 
     collapseAll(): void {
         ipc.send({
-            type: 'tree',
+            type: 'selection',
             action: 'collapseAll',
             payload: {},
         });
@@ -97,7 +105,7 @@ class TreeVM {
         const ids = collectAllSubtreeIds(this.nodes, id);
         if (ids.length === 0) return;
         ipc.send({
-            type: 'tree',
+            type: 'selection',
             action: 'collapseBranch',
             payload: { ids },
         });
@@ -105,20 +113,10 @@ class TreeVM {
 
     setFilter(query: string): void {
         this.filterQuery = query;
-        ipc.send({
-            type: 'tree',
-            action: 'filter',
-            payload: { query },
-        });
     }
 
     clearFilter(): void {
         this.filterQuery = '';
-        ipc.send({
-            type: 'tree',
-            action: 'filter',
-            payload: { query: '' },
-        });
     }
 
     openInFileBrowser(id: string): void {
@@ -130,7 +128,7 @@ class TreeVM {
     }
 
     isExpanded(id: string): boolean {
-        return this.selection.expandedIds.includes(id);
+        return this.expandedSet.has(id);
     }
 
     isSelected(id: string): boolean {
@@ -144,7 +142,7 @@ class TreeVM {
 
     flattenTree(
         nodeList: TreeNode[],
-        expandedIds: string[],
+        expandedIds: Set<string>,
         depth: number = 0
     ): Array<{ node: TreeNode; depth: number }> {
         return flattenTree(nodeList, expandedIds, depth);
@@ -157,8 +155,7 @@ export const tree = new TreeVM();
 // IPC Listeners
 // =============================================================================
 
-// Note: tree:update handler is defined below with enhanced support for both
-// array and object payloads (for backwards compatibility)
+// Note: tree:update handler is defined below
 
 ipc.onAction<{ parentId: string; children: TreeNode[] }>(
     'tree',
@@ -207,11 +204,7 @@ ipc.onAction<{ files: string[] }>('property', 'editedFiles', (payload) => {
 
 // Handle full tree update from project open (with nodes wrapper)
 ipc.onAction<{ nodes: TreeNode[] }>('tree', 'update', (payload) => {
-    if (Array.isArray(payload)) {
-        tree.nodes = payload;
-    } else if (payload.nodes) {
-        tree.nodes = payload.nodes;
-    }
+    tree.nodes = payload.nodes ?? [];
     tree.isLoading = false;
 });
 
@@ -232,12 +225,12 @@ function findNodeById(nodeList: TreeNode[], id: string): TreeNode | null {
 
 function countVisibleNodes(
     nodeList: TreeNode[],
-    expandedIds: string[]
+    expandedIds: Set<string>
 ): number {
     let count = 0;
     for (const node of nodeList) {
         count++;
-        if (expandedIds.includes(node.id) && node.children) {
+        if (expandedIds.has(node.id) && node.children) {
             count += countVisibleNodes(node.children, expandedIds);
         }
     }
@@ -341,11 +334,35 @@ function collectDescendantIds(node: TreeNode, ids: string[]): void {
 }
 
 /**
+ * Filter tree nodes by a search query, preserving ancestor structure.
+ * A node is included if its name matches or any descendant matches.
+ */
+function filterTree(nodeList: TreeNode[], query: string): TreeNode[] {
+    const result: TreeNode[] = [];
+
+    for (const node of nodeList) {
+        const nameMatches = node.name.toLowerCase().includes(query);
+        const filteredChildren = node.children
+            ? filterTree(node.children, query)
+            : [];
+
+        if (nameMatches || filteredChildren.length > 0) {
+            result.push({
+                ...node,
+                children: filteredChildren.length > 0 ? filteredChildren : node.children ? [] : undefined,
+            });
+        }
+    }
+
+    return result;
+}
+
+/**
  * Flatten the tree for virtual list rendering.
  */
 export function flattenTree(
     nodeList: TreeNode[],
-    expandedIds: string[],
+    expandedIds: Set<string>,
     depth: number = 0
 ): Array<{ node: TreeNode; depth: number }> {
     const result: Array<{ node: TreeNode; depth: number }> = [];
@@ -353,7 +370,7 @@ export function flattenTree(
     for (const node of nodeList) {
         result.push({ node, depth });
 
-        if (expandedIds.includes(node.id) && node.children) {
+        if (expandedIds.has(node.id) && node.children) {
             result.push(...flattenTree(node.children, expandedIds, depth + 1));
         }
     }

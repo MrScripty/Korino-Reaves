@@ -55,6 +55,9 @@ TestResults/
 # =============================================================================
 *.so
 
+# Allow tracked native runtimes (zlib-ng, etc.)
+!godot/native/runtimes/**/native/*
+
 # CEF native binaries (downloaded via ./launcher.sh setup-cef)
 cef/
 

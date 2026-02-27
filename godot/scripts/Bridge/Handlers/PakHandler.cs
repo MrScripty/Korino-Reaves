@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using UAssetViewer.Assets;
+using UAssetViewer.Assets.Compression;
 using UAssetViewer.Bridge;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
@@ -113,6 +114,17 @@ public sealed class PakHandler : IMessageHandler
             if (!File.Exists(request.PakPath))
             {
                 return CreateErrorResponse(message, $"PAK file not found: {request.PakPath}");
+            }
+
+            // Ensure zlib-ng is available before attempting extraction
+            if (!CompressionInitializerFactory.IsInitialized)
+                CompressionInitializerFactory.EnsureInitialized(_logger);
+
+            if (!CompressionInitializerFactory.IsInitialized)
+            {
+                return CreateErrorResponse(message,
+                    "PAK decompression unavailable: native zlib-ng library not found. " +
+                    "Run scripts/build-zlib-ng.sh or install zlib-ng for your platform.");
             }
 
             // Start extraction in background
@@ -267,6 +279,12 @@ public sealed class PakHandler : IMessageHandler
 
             // Auto-open the project
             SendProjectOpened(request.ProjectName, outputDir, extractedCount);
+
+            // Let the runtime and OS reclaim buffers from extraction before scanning
+            await Task.Delay(500);
+
+            // Build dependency graph in background (non-blocking)
+            _ = BuildDependencyGraphAsync(outputDir, request.GameVersion);
         }
         catch (Exception ex)
         {
@@ -278,6 +296,40 @@ public sealed class PakHandler : IMessageHandler
             _isExtracting = false;
             _extractionCts?.Dispose();
             _extractionCts = null;
+        }
+    }
+
+    private async Task BuildDependencyGraphAsync(string outputDir, string? gameVersion)
+    {
+        try
+        {
+            var depHandler = _dispatcher.GetHandler<DependencyHandler>();
+            if (depHandler == null)
+            {
+                _logger.Warning("DependencyHandler not registered — skipping dependency scan");
+                return;
+            }
+
+            // Resolve engine version from the import request
+            var engineVersion = UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_27;
+            if (!string.IsNullOrEmpty(gameVersion) && gameVersion != "AUTO")
+            {
+                var versionName = gameVersion.Replace("GAME_", "VER_");
+                if (Enum.TryParse<UAssetAPI.UnrealTypes.EngineVersion>(versionName, out var parsed))
+                    engineVersion = parsed;
+            }
+
+            _logger.Info("Starting post-extraction dependency scan: {Path}", outputDir);
+            await depHandler.RunScanAsync(outputDir, engineVersion);
+
+            // Chain asset import after scan completes
+            var importHandler = _dispatcher.GetHandler<ImportHandler>();
+            if (importHandler != null)
+                await importHandler.RunImportAsync(outputDir, gameVersion);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Post-extraction dependency scan failed (non-fatal): {Error}", ex.Message);
         }
     }
 

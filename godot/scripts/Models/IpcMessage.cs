@@ -20,6 +20,9 @@ public static class MessageTypes
     public const string Project = "project";
     public const string Error = "error";
     public const string Scene = "scene";
+    public const string Log = "log";
+    public const string Dependency = "dependency";
+    public const string Import = "import";
     public const string Test = "test";
 }
 

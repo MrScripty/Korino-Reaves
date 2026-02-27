@@ -10,6 +10,10 @@
     import { project } from '$lib/view-models/project.svelte';
     import { pak } from '$lib/view-models/pak.svelte';
     import { fileBrowser } from '$lib/view-models/fileBrowser.svelte';
+    import { dock } from '$lib/view-models/dock.svelte';
+    import { ALL_PANEL_IDS } from '$lib/components/dock/dockTypes';
+    import { PANEL_DEFINITIONS } from '$lib/components/dock/panelRegistry';
+    import type { PanelId } from '$lib/components/dock/dockTypes';
 
     interface MenuItem {
         label: string;
@@ -23,8 +27,20 @@
 
     // Transient UI state - which menu is open
     let openMenu = $state<string | null>(null);
+    let openSubmenu = $state<string | null>(null);
 
-    const menus: Record<string, MenuItem[]> = {
+    // Panel toggle items for View > Panels submenu
+    const toggleablePanels: PanelId[] = ALL_PANEL_IDS.filter(id => id !== 'viewport');
+
+    const panelMenuItems: MenuItem[] = $derived(
+        toggleablePanels.map(id => ({
+            label: (dock.isPanelVisible(id) ? '\u2713 ' : '   ') + PANEL_DEFINITIONS[id].title,
+            type: 'svelte',
+            action: `togglePanel:${id}`,
+        }))
+    );
+
+    const menus: Record<string, MenuItem[]> = $derived({
         File: [
             { label: 'Open Project...', type: 'svelte', action: 'openProject', shortcut: 'Ctrl+O' },
             { label: 'Import PAK...', type: 'svelte', action: 'importPak', shortcut: 'Ctrl+I' },
@@ -50,9 +66,13 @@
             { label: 'Expand All', action: 'view.expandAll' },
             { label: 'Collapse All', action: 'view.collapseAll' },
             { separator: true, label: '' },
-            { label: 'Reset Layout', action: 'view.resetLayout' },
+            { label: 'Panels', submenu: panelMenuItems },
+            { separator: true, label: '' },
+            { label: 'Reset Layout', type: 'svelte', action: 'resetLayout' },
         ],
         Tools: [
+            { label: 'Scan Dependencies...', type: 'dependency', action: 'scan', disabled: !project.hasProject },
+            { separator: true, label: '' },
             { label: 'Compare Assets...', action: 'tools.compare' },
             { label: 'Mod Porting Wizard...', action: 'tools.modPort' },
             { separator: true, label: '' },
@@ -64,7 +84,7 @@
             { separator: true, label: '' },
             { label: 'About', action: 'help.about' },
         ],
-    };
+    });
 
     function handleMenuClick(menuName: string) {
         openMenu = openMenu === menuName ? null : menuName;
@@ -152,7 +172,17 @@
                 });
                 break;
 
+            case 'resetLayout':
+                dock.resetLayout();
+                break;
+
             default:
+                // Handle panel toggle actions (togglePanel:panelId)
+                if (action.startsWith('togglePanel:')) {
+                    const panelId = action.split(':')[1] as PanelId;
+                    dock.togglePanel(panelId);
+                    return; // Don't close menu - let user toggle multiple panels
+                }
                 console.warn('[MenuBar] Unknown Svelte action:', action);
         }
     }
@@ -195,10 +225,39 @@
                         {#if item.separator}
                             <div class="menu-separator" role="separator"></div>
                         {:else if item.submenu}
-                            <button class="menu-item has-submenu" disabled>
-                                {item.label}
-                                <span class="submenu-arrow">▶</span>
-                            </button>
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div
+                                class="menu-item-container"
+                                onmouseenter={() => { openSubmenu = item.label; }}
+                                onmouseleave={() => { openSubmenu = null; }}
+                            >
+                                <button
+                                    class="menu-item has-submenu"
+                                    disabled={item.submenu.length === 0}
+                                >
+                                    <span class="item-label">{item.label}</span>
+                                    <span class="submenu-arrow">▶</span>
+                                </button>
+                                {#if openSubmenu === item.label && item.submenu.length > 0}
+                                    <div class="submenu-dropdown" role="menu">
+                                        {#each item.submenu as subItem}
+                                            {#if subItem.separator}
+                                                <div class="menu-separator" role="separator"></div>
+                                            {:else}
+                                                <button
+                                                    class="menu-item"
+                                                    class:disabled={subItem.disabled}
+                                                    role="menuitem"
+                                                    disabled={subItem.disabled}
+                                                    onclick={() => handleItemClick(subItem)}
+                                                >
+                                                    <span class="item-label">{subItem.label}</span>
+                                                </button>
+                                            {/if}
+                                        {/each}
+                                    </div>
+                                {/if}
+                            </div>
                         {:else}
                             <button
                                 class="menu-item"
@@ -305,5 +364,22 @@
         height: 1px;
         background: var(--border);
         margin: var(--space-1) 0;
+    }
+
+    .menu-item-container {
+        position: relative;
+    }
+
+    .submenu-dropdown {
+        position: absolute;
+        top: 0;
+        left: 100%;
+        min-width: 180px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        padding: var(--space-1) 0;
+        z-index: var(--z-dropdown);
     }
 </style>

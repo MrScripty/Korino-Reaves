@@ -35,14 +35,14 @@ public sealed class MaterialExtractor
 
     private readonly IAppLogger _logger;
     private readonly TextureExtractor _textureExtractor;
-    private readonly ColorSpaceManager? _colorSpace;
 
     public MaterialExtractor(IAppLogger logger, TextureExtractor textureExtractor,
         ColorSpaceManager? colorSpaceManager = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _textureExtractor = textureExtractor ?? throw new ArgumentNullException(nameof(textureExtractor));
-        _colorSpace = colorSpaceManager;
+        // colorSpaceManager kept in signature for API compat but no longer needed:
+        // Godot's StandardMaterial3D shader handles sRGB→linear via source_color hint.
     }
 
     /// <summary>
@@ -118,18 +118,32 @@ public sealed class MaterialExtractor
             var materialInterface = await Task.Run(() =>
                 section.Material?.Load<UMaterialInterface>());
 
-            // If direct load fails (cross-package import), try loading via provider
+            // If direct load fails, try full game path from import table
+            if (materialInterface == null && provider != null && section.Material != null)
+            {
+                var fullPath = section.Material.GetPathName();
+                if (!string.IsNullOrEmpty(fullPath))
+                {
+                    _logger.Debug("Direct load failed for {Name}, trying full path: {Path}",
+                        (object)(section.MaterialName ?? "unknown"), (object)fullPath);
+                    materialInterface = await LoadMaterialByFullPathAsync(provider, fullPath);
+                }
+            }
+
+            // Filename-only fallback (last resort)
             if (materialInterface == null && provider != null && section.MaterialName != null)
             {
-                _logger.Debug("Direct load failed for {Name}, trying provider lookup",
+                _logger.Debug("Full path resolution failed for {Name}, trying filename-only search",
                     section.MaterialName);
                 materialInterface = await LoadMaterialByNameAsync(provider, section.MaterialName);
             }
 
             if (materialInterface == null)
             {
-                _logger.Warning("Could not load UMaterialInterface for section {Index} ({Name})",
-                    section.MaterialIndex, section.MaterialName ?? "unknown");
+                var attemptedPath = section.Material?.GetPathName();
+                _logger.Warning("Could not load material for section {Index}: name={Name}, path={Path}",
+                    section.MaterialIndex, section.MaterialName ?? "unknown",
+                    attemptedPath ?? "none");
                 return null;
             }
 
@@ -218,6 +232,90 @@ public sealed class MaterialExtractor
     }
 
     /// <summary>
+    /// Loads a material using its full game path from the import table.
+    /// Normalizes the path and tries multiple formats against the provider.
+    /// </summary>
+    private async Task<UMaterialInterface?> LoadMaterialByFullPathAsync(
+        DefaultFileProvider provider, string fullGamePath)
+    {
+        var loadPath = ResolveFullGamePath(provider, fullGamePath);
+        if (loadPath == null)
+        {
+            _logger.Debug("Material full path not found in provider: {Path}", fullGamePath);
+            return null;
+        }
+
+        _logger.Debug("Loading material from full path: {Path}", loadPath);
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                return provider.LoadPackageObject<UMaterialInterface>(loadPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug("Failed to load material from full path: {Error}", ex.Message);
+                return null;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Resolves a full game path (from import tables) to a provider-compatible load path.
+    /// Handles object suffixes, leading slashes, and project directory prefixes.
+    /// </summary>
+    private static string? ResolveFullGamePath(DefaultFileProvider provider, string gamePath)
+    {
+        // Strip object name suffix (e.g., "/Game/Mat/M_Rock.M_Rock" -> "/Game/Mat/M_Rock")
+        var dotIndex = gamePath.LastIndexOf('.');
+        if (dotIndex > 0)
+        {
+            var afterDot = gamePath[(dotIndex + 1)..];
+            var beforeDot = gamePath[..dotIndex];
+            var lastSlash = beforeDot.LastIndexOf('/');
+            var packageName = lastSlash >= 0 ? beforeDot[(lastSlash + 1)..] : beforeDot;
+            if (afterDot.Equals(packageName, StringComparison.OrdinalIgnoreCase))
+            {
+                gamePath = beforeDot;
+            }
+        }
+
+        // Normalize: strip leading slash, strip .uasset extension
+        var normalized = gamePath.TrimStart('/');
+        if (normalized.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[..^7];
+
+        var withExt = normalized + ".uasset";
+
+        // Try direct matches
+        if (provider.Files.ContainsKey(normalized))
+            return normalized;
+        if (provider.Files.ContainsKey(withExt))
+            return normalized;
+
+        // Try prefixed with the project directory (first path segment from provider keys)
+        var sampleKey = provider.Files.Keys.FirstOrDefault();
+        if (sampleKey != null)
+        {
+            var firstSlash = sampleKey.IndexOf('/');
+            if (firstSlash > 0)
+            {
+                var prefix = sampleKey[..firstSlash];
+                var prefixed = prefix + "/" + normalized;
+                var prefixedExt = prefix + "/" + withExt;
+
+                if (provider.Files.ContainsKey(prefixed))
+                    return prefixed;
+                if (provider.Files.ContainsKey(prefixedExt))
+                    return prefixed;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Manually resolves texture references from a UMaterialInstanceConstant
     /// by searching the provider for each texture by name.
     /// CUE4Parse's GetParams() can't resolve cross-package texture imports
@@ -229,7 +327,6 @@ public sealed class MaterialExtractor
     {
         foreach (var texParam in mic.TextureParameterValues)
         {
-            // Get texture name from the unresolved reference
             var textureName = texParam.ParameterValue?.Name;
             if (string.IsNullOrEmpty(textureName) || textureName == "None")
                 continue;
@@ -237,11 +334,28 @@ public sealed class MaterialExtractor
             var paramName = texParam.Name;
             _logger.Debug("Resolving texture param '{Param}' -> '{Texture}'", paramName, textureName);
 
-            var texture = await LoadTextureByNameAsync(provider, textureName);
-            if (texture == null) continue;
+            // Try full path from import table first
+            UTexture2D? texture = null;
+            var resolvedObj = texParam.ParameterValue?.ResolvedObject;
+            if (resolvedObj != null)
+            {
+                var texFullPath = resolvedObj.GetPathName();
+                if (!string.IsNullOrEmpty(texFullPath) && texFullPath != "None")
+                {
+                    texture = await LoadTextureByFullPathAsync(provider, texFullPath);
+                }
+            }
 
-            // Assign to the appropriate CMaterialParams slot using the same
-            // name heuristics as CUE4Parse's GetParams
+            // Fall back to name-based search
+            texture ??= await LoadTextureByNameAsync(provider, textureName);
+
+            if (texture == null)
+            {
+                _logger.Warning("Could not resolve texture: param={Param}, name={Name}",
+                    paramName, textureName);
+                continue;
+            }
+
             AssignTextureToParams(matParams, paramName, texture);
         }
     }
@@ -308,6 +422,31 @@ public sealed class MaterialExtractor
             catch (Exception ex)
             {
                 _logger.Debug("Failed to load texture from provider: {Error}", ex.Message);
+                return null;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Loads a texture using its full game path from the import table.
+    /// </summary>
+    private async Task<UTexture2D?> LoadTextureByFullPathAsync(
+        DefaultFileProvider provider, string fullGamePath)
+    {
+        var loadPath = ResolveFullGamePath(provider, fullGamePath);
+        if (loadPath == null) return null;
+
+        _logger.Debug("Loading texture from full path: {Path}", loadPath);
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                return provider.LoadPackageObject<UTexture2D>(loadPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug("Failed to load texture from full path: {Error}", ex.Message);
                 return null;
             }
         });
@@ -382,14 +521,10 @@ public sealed class MaterialExtractor
         if (diffuseImage != null)
         {
             // CUE4Parse decodes textures to sRGB bytes matching UE4's storage format.
-            // Godot's ImageTexture.CreateFromImage() uploads as UNORM (linear) on the GPU,
-            // so we must convert sRGB→linear ourselves for correct PBR lighting.
-            // Uses OCIO when available, falls back to Godot's built-in conversion.
-            var linearDiffuse = _colorSpace?.TransformImage(diffuseImage, "sRGB", "Linear");
-            if (linearDiffuse != null)
-                diffuseImage = linearDiffuse;
-            else
-                diffuseImage.SrgbToLinear();
+            // Upload as-is: Godot creates both UNORM and SRGB GPU texture views for
+            // RGBA8 images, and StandardMaterial3D's shader samples albedo with the
+            // `source_color` hint which selects the SRGB view — the GPU hardware
+            // applies the sRGB→linear conversion automatically during sampling.
             material.AlbedoTexture = ImageTexture.CreateFromImage(diffuseImage);
         }
 
@@ -421,11 +556,8 @@ public sealed class MaterialExtractor
         // --- Emissive ---
         if (emissiveImage != null)
         {
-            var linearEmissive = _colorSpace?.TransformImage(emissiveImage, "sRGB", "Linear");
-            if (linearEmissive != null)
-                emissiveImage = linearEmissive;
-            else
-                emissiveImage.SrgbToLinear();
+            // Same as albedo: keep sRGB bytes, let the GPU handle conversion via
+            // the source_color sampler hint in the emission texture uniform.
             material.EmissionEnabled = true;
             material.EmissionTexture = ImageTexture.CreateFromImage(emissiveImage);
             material.Emission = Colors.White;

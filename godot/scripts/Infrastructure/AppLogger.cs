@@ -9,6 +9,7 @@ using System.IO;
 using Serilog;
 using Serilog.Context;
 using Serilog.Events;
+using UAssetViewer.Bridge;
 
 namespace UAssetViewer.Infrastructure;
 
@@ -22,6 +23,7 @@ public sealed class AppLogger : IAppLogger, IDisposable
 
     private readonly ILogger _logger;
     private readonly ActivitySource _activitySource;
+    private readonly IpcLogSink _ipcSink;
     private bool _disposed;
 
     /// <summary>
@@ -60,6 +62,8 @@ public sealed class AppLogger : IAppLogger, IDisposable
         }
 
         // Configure Serilog
+        _ipcSink = new IpcLogSink(LogEventLevel.Information);
+
         _logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .Enrich.FromLogContext()
@@ -73,6 +77,7 @@ public sealed class AppLogger : IAppLogger, IDisposable
                 retainedFileCountLimit: 7,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Scope}{Message:lj}{NewLine}{Exception}"
             )
+            .WriteTo.Sink(_ipcSink)
             .CreateLogger();
 
         // Create activity source for OpenTelemetry tracing
@@ -89,6 +94,15 @@ public sealed class AppLogger : IAppLogger, IDisposable
         // Note: Serilog doesn't support runtime level changes easily
         // For now, we filter manually or recreate the logger
         Instance.Info("Log level change requested to {Level} (not implemented)", level);
+    }
+
+    /// <summary>
+    /// Connects the IPC log sink to the dispatcher so log events
+    /// are forwarded to the UI. Call after dispatcher is created.
+    /// </summary>
+    public void ConnectIpcDispatcher(IpcDispatcher dispatcher)
+    {
+        _ipcSink.SetDispatcher(dispatcher);
     }
 
     public void Debug(string message, params object[] args)

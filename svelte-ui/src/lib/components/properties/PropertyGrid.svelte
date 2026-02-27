@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
     import PropertyRow from './PropertyRow.svelte';
+    import ScrollContainer from '$lib/components/common/ScrollContainer.svelte';
     import { properties } from '$lib/view-models/properties.svelte';
     import type { PropertyValue } from '$lib/bridge/types';
 
@@ -53,18 +54,21 @@
             <span class="text-muted">Select a node to view properties</span>
         </div>
     {:else}
-        <div class="properties-list">
-            {#each flatList as { property, depth } (properties.pathToKey(property.path))}
-                <PropertyRow {property} {depth} />
-            {/each}
-        </div>
+        <ScrollContainer>
+            <div class="properties-list">
+                {#each flatList as { property, depth } (properties.pathToKey(property.path))}
+                    <PropertyRow {property} {depth} />
+                {/each}
+            </div>
+        </ScrollContainer>
     {/if}
 </div>
 
 <style>
     .property-grid {
         height: 100%;
-        overflow: auto;
+        display: flex;
+        flex-direction: column;
     }
 
     .loading,

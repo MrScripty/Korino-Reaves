@@ -25,6 +25,33 @@ export const LAYOUT = {
 } as const;
 
 // =============================================================================
+// Dock Layout Constants
+// =============================================================================
+
+export const DOCK = {
+    /** Minimum width for left/right zones */
+    ZONE_MIN_WIDTH: 150,
+    /** Maximum width for left/right zones */
+    ZONE_MAX_WIDTH: 600,
+    /** Minimum height for bottom zone */
+    ZONE_MIN_HEIGHT: 80,
+    /** Maximum height for bottom zone */
+    ZONE_MAX_HEIGHT: 600,
+    /** Default left zone width */
+    DEFAULT_LEFT_WIDTH: 300,
+    /** Default right zone width */
+    DEFAULT_RIGHT_WIDTH: 260,
+    /** Default bottom zone height */
+    DEFAULT_BOTTOM_HEIGHT: 200,
+    /** Drag dead zone (pixels before drag starts) */
+    DRAG_THRESHOLD: 5,
+    /** localStorage key */
+    STORAGE_KEY: 'dock-layout-v1',
+    /** Debounce delay for saving splitter positions (ms) */
+    SAVE_DEBOUNCE: 300,
+} as const;
+
+// =============================================================================
 // Tree Constants
 // =============================================================================
 

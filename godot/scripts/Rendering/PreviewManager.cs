@@ -18,6 +18,7 @@ using Godot;
 using UAssetViewer.Assets.Compression;
 using UAssetViewer.Bridge;
 using UAssetViewer.Bridge.Handlers;
+using UAssetViewer.Data;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
 
@@ -37,6 +38,7 @@ public sealed class PreviewManager : IDisposable
     private readonly MeshExtractor _meshExtractor;
     private readonly MaterialExtractor _materialExtractor;
     private readonly ColorSpaceManager? _colorSpaceManager;
+    private AssetCache? _assetCache;
 
     private DefaultFileProvider? _fileProvider;
     private string? _projectPath;
@@ -237,6 +239,88 @@ public sealed class PreviewManager : IDisposable
 
             _logger.Info("Loading preview: {LoadPath} (EGame={Game})",
                 loadPath, _fileProvider.Versions.Game);
+
+            // Try loading from pre-extracted .res cache first
+            if (_assetCache?.HasCache == true)
+            {
+                try
+                {
+                    // Use relativePath directly as the cache key (already DB-relative, e.g. "Content/Tex/T.uasset")
+                    var cacheKey = relativePath.Replace('\\', '/');
+
+                    // Try texture cache
+                    var cachedTexPath = _assetCache.GetTexturePath(cacheKey);
+                    if (cachedTexPath != null)
+                    {
+                        var cachedTex = ResourceLoader.Load<ImageTexture>(cachedTexPath);
+                        if (cachedTex != null)
+                        {
+                            var image = cachedTex.GetImage();
+                            if (image != null)
+                            {
+                                var pngBytes = image.SavePngToBuffer();
+                                var base64 = Convert.ToBase64String(pngBytes);
+                                var dataUrl = $"data:image/png;base64,{base64}";
+
+                                _dispatcher.Send(MessageTypes.Viewport, "preview", new
+                                {
+                                    imageData = dataUrl,
+                                    mode = "2d",
+                                    contentType = "texture",
+                                    assetName,
+                                    textureInfo = new
+                                    {
+                                        width = image.GetWidth(),
+                                        height = image.GetHeight(),
+                                        format = "cached",
+                                    },
+                                });
+                                return; // Cache hit
+                            }
+                        }
+                    }
+
+                    // Try mesh cache
+                    var cachedMeshPath = _assetCache.GetMeshPath(cacheKey);
+                    if (cachedMeshPath != null)
+                    {
+                        var cachedMesh = ResourceLoader.Load<ArrayMesh>(cachedMeshPath);
+                        if (cachedMesh != null)
+                        {
+                            // Load cached materials for each surface
+                            var matKeys = _assetCache.GetMeshSurfaceMaterials(cacheKey);
+                            ExtractedMaterial?[]? cachedMaterials = null;
+
+                            if (matKeys != null)
+                            {
+                                cachedMaterials = new ExtractedMaterial?[matKeys.Length];
+                                for (int i = 0; i < matKeys.Length; i++)
+                                {
+                                    if (matKeys[i] != null)
+                                    {
+                                        var matResPath = _assetCache.GetMaterialPath(matKeys[i]!);
+                                        if (matResPath != null)
+                                        {
+                                            var mat = ResourceLoader.Load<StandardMaterial3D>(matResPath);
+                                            if (mat != null)
+                                            {
+                                                cachedMaterials[i] = new ExtractedMaterial(mat, matKeys[i], 0);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RenderMeshAndSend(cachedMesh, assetName, null, cachedMaterials);
+                            return; // Cache hit
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug("Cache preview load failed, falling back to CUE4Parse: {Error}", ex.Message);
+                }
+            }
 
             // Try loading as each supported type via CUE4Parse.
             // LoadPackageObject throws if the asset can't be loaded as that type.
@@ -1024,8 +1108,13 @@ public sealed class PreviewManager : IDisposable
         _fileProvider.Initialize();
         await Task.Run(() => _fileProvider.Mount());
 
-        _logger.Info("File provider ready: {FileCount} files, version: {Version}",
-            _fileProvider.Files.Count, gameVersion);
+        // Open asset cache for pre-extracted .res lookups
+        _assetCache?.Dispose();
+        _assetCache = new AssetCache(_logger);
+        _assetCache.Open(_projectPath!);
+
+        _logger.Info("File provider ready: {FileCount} files, version: {Version}, cache={HasCache}",
+            _fileProvider.Files.Count, gameVersion, _assetCache.HasCache);
     }
 
     private void DisposeProvider()
@@ -1033,6 +1122,8 @@ public sealed class PreviewManager : IDisposable
         _fileProvider?.Dispose();
         _fileProvider = null;
         _projectPath = null;
+        _assetCache?.Dispose();
+        _assetCache = null;
     }
 
     /// <summary>
@@ -1069,6 +1160,8 @@ public sealed class PreviewManager : IDisposable
         }
 
         DisposeProvider();
+        _assetCache?.Dispose();
+        _assetCache = null;
 
         // Shut down OCIO+OIIO color bridge
         ColorBridgeInitializer.Shutdown();

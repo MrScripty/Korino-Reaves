@@ -19,9 +19,9 @@
 
     let { class: className = '' }: Props = $props();
 
-    // Flatten tree for rendering
+    // Flatten tree for rendering (uses filtered nodes when search is active)
     let flattenedNodes = $derived(
-        tree.flattenTree(tree.nodes, tree.selection.expandedIds)
+        tree.flattenTree(tree.filteredNodes, tree.expandedSet)
     );
 
     // Virtual scrolling state (transient UI - OK for Svelte to own)
@@ -222,7 +222,9 @@
             </div>
         {:else if flattenedNodes.length === 0}
             <div class="empty">
-                <span class="text-muted">No asset loaded</span>
+                <span class="text-muted">
+                    {tree.filterQuery ? 'No matching results' : 'No asset loaded'}
+                </span>
             </div>
         {:else}
             <!-- Virtual scroll container -->

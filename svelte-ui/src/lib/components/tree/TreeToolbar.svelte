@@ -10,6 +10,13 @@
     let searchInput = $state('');
     let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    // Clean up debounce timer on component destroy
+    $effect(() => {
+        return () => {
+            if (searchTimeout) clearTimeout(searchTimeout);
+        };
+    });
+
     function handleSearchInput(event: Event) {
         const target = event.target as HTMLInputElement;
         searchInput = target.value;
@@ -21,6 +28,11 @@
         searchTimeout = setTimeout(() => {
             tree.setFilter(searchInput);
         }, 300);
+    }
+
+    function handleSearchKeyDown(event: KeyboardEvent) {
+        // Stop propagation so parent tree/CEF don't intercept keys (especially Backspace)
+        event.stopPropagation();
     }
 
     function handleClearSearch() {
@@ -49,6 +61,7 @@
             placeholder="Search..."
             value={searchInput}
             oninput={handleSearchInput}
+            onkeydown={handleSearchKeyDown}
             class="search-input"
         />
         {#if searchInput}

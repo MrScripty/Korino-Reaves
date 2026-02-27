@@ -8,7 +8,7 @@
  */
 
 import { ipc } from '$lib/bridge/ipc';
-import type { SceneActor, SceneInfo } from '$lib/bridge/types';
+import type { SceneActor, SceneInfo, SubLevelSummary } from '$lib/bridge/types';
 
 class SceneVM {
     isActive = $state(false);
@@ -18,6 +18,11 @@ class SceneVM {
     selectedActorId = $state<string | null>(null);
     loadProgress = $state({ loaded: 0, total: 0 });
     filterQuery = $state('');
+
+    // Multi-level state
+    isMultiLevel = $state(false);
+    subLevels = $state<SubLevelSummary[]>([]);
+    collapsedLevels = $state<Set<string>>(new Set());
 
     get meshActors(): SceneActor[] {
         return this.actors.filter((a) => a.hasMesh);
@@ -36,6 +41,23 @@ class SceneVM {
         );
     }
 
+    get actorsByLevel(): Map<string, SceneActor[]> {
+        const map = new Map<string, SceneActor[]>();
+        for (const actor of this.filteredActors) {
+            const group = map.get(actor.levelName) ?? [];
+            group.push(actor);
+            map.set(actor.levelName, group);
+        }
+        return map;
+    }
+
+    toggleLevelCollapsed(levelName: string): void {
+        const next = new Set(this.collapsedLevels);
+        if (next.has(levelName)) next.delete(levelName);
+        else next.add(levelName);
+        this.collapsedLevels = next;
+    }
+
     selectActor(id: string): void {
         ipc.send({
             type: 'scene',
@@ -49,6 +71,22 @@ class SceneVM {
             type: 'scene',
             action: 'focusActor',
             payload: { actorId: id },
+        });
+    }
+
+    pickActor(normalizedX: number, normalizedY: number): void {
+        ipc.send({
+            type: 'scene',
+            action: 'pickActor',
+            payload: { normalizedX, normalizedY },
+        });
+    }
+
+    deselectActor(): void {
+        ipc.send({
+            type: 'scene',
+            action: 'deselectActor',
+            payload: {},
         });
     }
 
@@ -71,15 +109,20 @@ ipc.onAction<{ loading: boolean }>('scene', 'loading', (payload) => {
     scene.isLoading = payload.loading;
 });
 
-ipc.onAction<{ levelName: string; actors: SceneActor[]; totalCount: number; meshCount: number }>(
-    'scene',
-    'actorList',
-    (payload) => {
-        scene.isActive = true;
-        scene.levelName = payload.levelName;
-        scene.actors = payload.actors;
-    }
-);
+ipc.onAction<{
+    levelName: string;
+    actors: SceneActor[];
+    totalCount: number;
+    meshCount: number;
+    isMultiLevel?: boolean;
+    subLevels?: SubLevelSummary[];
+}>('scene', 'actorList', (payload) => {
+    scene.isActive = true;
+    scene.levelName = payload.levelName;
+    scene.actors = payload.actors;
+    scene.isMultiLevel = payload.isMultiLevel ?? false;
+    scene.subLevels = payload.subLevels ?? [];
+});
 
 ipc.onAction<{ loaded: number; total: number }>('scene', 'loadProgress', (payload) => {
     scene.loadProgress = payload;
@@ -101,6 +144,9 @@ ipc.onAction('scene', 'cleared', () => {
     scene.selectedActorId = null;
     scene.loadProgress = { loaded: 0, total: 0 };
     scene.filterQuery = '';
+    scene.isMultiLevel = false;
+    scene.subLevels = [];
+    scene.collapsedLevels = new Set();
 });
 
 // Clear scene when project closes
@@ -112,4 +158,7 @@ ipc.onAction('project', 'closed', () => {
     scene.selectedActorId = null;
     scene.loadProgress = { loaded: 0, total: 0 };
     scene.filterQuery = '';
+    scene.isMultiLevel = false;
+    scene.subLevels = [];
+    scene.collapsedLevels = new Set();
 });

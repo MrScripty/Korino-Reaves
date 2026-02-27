@@ -23,6 +23,11 @@ namespace UAssetViewer.Bridge;
 /// </summary>
 public sealed class IpcDispatcher : IDisposable
 {
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     private readonly Dictionary<string, IMessageHandler> _handlers = new();
     private readonly IAppLogger _logger;
     private readonly AssetManager _assetManager;
@@ -84,13 +89,16 @@ public sealed class IpcDispatcher : IDisposable
     {
         RegisterHandler(new TestHandler(_logger));
         RegisterHandler(new AssetHandler(_logger, _assetManager));
-        RegisterHandler(new TreeHandler(_logger, _assetManager, this));
+        // SelectionHandler must be created before TreeHandler (TreeHandler depends on it)
+        var selectionHandler = new SelectionHandler(_logger);
+        RegisterHandler(selectionHandler);
+        RegisterHandler(new TreeHandler(_logger, _assetManager, this, selectionHandler));
         // PropertyHandler registered separately in MainController (needs EditDatabase + dispatcher)
-        RegisterHandler(new SelectionHandler(_logger));
         RegisterHandler(new DiffHandler(_logger, _assetManager));
         RegisterHandler(new PakHandler(_logger, this));
         RegisterHandler(new ProjectHandler(_logger, this));
         RegisterHandler(new FilesystemHandler(_logger));
+        RegisterHandler(new DependencyHandler(_logger, this));
     }
 
     /// <summary>
@@ -189,8 +197,8 @@ public sealed class IpcDispatcher : IDisposable
 
         _logger.Debug("Sending: type={Type}, action={Action}", message.Type, message.Action);
 
-        var json = JsonSerializer.Serialize(message);
-        _cefNode.Call("send_ipc_message", json);
+        var json = JsonSerializer.Serialize(message, s_jsonOptions);
+        _cefNode.CallDeferred("send_ipc_message", json);
     }
 
     /// <summary>

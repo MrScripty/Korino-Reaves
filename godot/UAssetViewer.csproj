@@ -53,4 +53,22 @@
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.32.0" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.32.0-alpha" />
   </ItemGroup>
+
+  <!-- Native zlib-ng libraries (required for PAK decompression) -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <None Include="native/runtimes/linux-x64/native/libz-ng.so.2"
+          CopyToOutputDirectory="PreserveNewest" Link="libz-ng.so.2" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="native/runtimes/win-x64/native/zlib-ng2.dll"
+          CopyToOutputDirectory="PreserveNewest" Link="zlib-ng2.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="native/runtimes/osx-x64/native/libz-ng.2.dylib"
+          CopyToOutputDirectory="PreserveNewest" Link="libz-ng.2.dylib"
+          Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'X64'" />
+    <None Include="native/runtimes/osx-arm64/native/libz-ng.2.dylib"
+          CopyToOutputDirectory="PreserveNewest" Link="libz-ng.2.dylib"
+          Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'Arm64'" />
+  </ItemGroup>
 </Project>

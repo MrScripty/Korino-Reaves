@@ -36,8 +36,30 @@ public sealed record ActorData(
 /// </summary>
 public sealed record LevelExtractionResult(
     string LevelName,
-    ActorData[] Actors
+    ActorData[] Actors,
+    Vector3 PositionOffset = default
 );
+
+/// <summary>
+/// Metadata about a discovered sub-level, including its position offset.
+/// </summary>
+public sealed record SubLevelInfo(
+    string RelativePath,
+    string LevelName,
+    Vector3 PositionOffset,
+    SubLevelDiscoverySource Source
+);
+
+/// <summary>
+/// How a sub-level was discovered relative to the primary level.
+/// </summary>
+public enum SubLevelDiscoverySource
+{
+    Primary,
+    WorldTileInfo,
+    DirectoryScan,
+    ImportReference
+}
 
 /// <summary>
 /// Extracts actor and mesh data from UE level (.umap) files using UAssetAPI.
@@ -60,12 +82,30 @@ public sealed class LevelExtractor
         IProgress<(int loaded, int total)>? progress = null,
         CancellationToken ct = default)
     {
-        return await Task.Run(() => ExtractLevel(filePath, version, progress, ct), ct);
+        var levelName = Path.GetFileNameWithoutExtension(filePath);
+        return await ExtractLevelAsync(filePath, version, levelName, Vector3.Zero, progress, ct);
+    }
+
+    /// <summary>
+    /// Loads a .umap file and extracts actors with a level-scoped ID prefix and position offset.
+    /// Used for multi-level loading where actor IDs must not collide across sub-levels.
+    /// </summary>
+    public async Task<LevelExtractionResult?> ExtractLevelAsync(
+        string filePath,
+        EngineVersion? version,
+        string levelPrefix,
+        Vector3 positionOffset,
+        IProgress<(int loaded, int total)>? progress = null,
+        CancellationToken ct = default)
+    {
+        return await Task.Run(() => ExtractLevel(filePath, version, levelPrefix, positionOffset, progress, ct), ct);
     }
 
     private LevelExtractionResult? ExtractLevel(
         string filePath,
         EngineVersion? version,
+        string levelPrefix,
+        Vector3 positionOffset,
         IProgress<(int loaded, int total)>? progress,
         CancellationToken ct)
     {
@@ -107,15 +147,16 @@ public sealed class LevelExtractor
         {
             _logger.Warning("No LevelExport found in: {Path}", filePath);
             // Fall back to scanning all exports for actor-like types
-            return ExtractActorsFromExports(asset, filePath, progress, ct);
+            return ExtractActorsFromExports(asset, filePath, levelPrefix, positionOffset, progress, ct);
         }
 
         _logger.Info("LevelExport found with {Count} actors", levelExport.Actors?.Count ?? 0);
-        return ExtractActorsFromLevelExport(asset, levelExport, filePath, progress, ct);
+        return ExtractActorsFromLevelExport(asset, levelExport, filePath, levelPrefix, positionOffset, progress, ct);
     }
 
     private LevelExtractionResult ExtractActorsFromLevelExport(
         UAsset asset, LevelExport levelExport, string filePath,
+        string levelPrefix, Vector3 positionOffset,
         IProgress<(int loaded, int total)>? progress, CancellationToken ct)
     {
         var actors = new List<ActorData>();
@@ -129,7 +170,7 @@ public sealed class LevelExtractor
             var actorRef = actorRefs[i];
             if (actorRef == null || actorRef.IsNull()) continue;
 
-            var actorData = ExtractActorFromRef(asset, actorRef, i);
+            var actorData = ExtractActorFromRef(asset, actorRef, i, levelPrefix);
             if (actorData != null)
             {
                 actors.Add(actorData);
@@ -144,11 +185,12 @@ public sealed class LevelExtractor
         progress?.Report((total, total));
         var levelName = Path.GetFileNameWithoutExtension(filePath);
         _logger.Info("Extracted {Count} actors from level {Name}", actors.Count, levelName);
-        return new LevelExtractionResult(levelName, actors.ToArray());
+        return new LevelExtractionResult(levelName, actors.ToArray(), positionOffset);
     }
 
     private LevelExtractionResult ExtractActorsFromExports(
         UAsset asset, string filePath,
+        string levelPrefix, Vector3 positionOffset,
         IProgress<(int loaded, int total)>? progress, CancellationToken ct)
     {
         var actors = new List<ActorData>();
@@ -163,7 +205,7 @@ public sealed class LevelExtractor
 
             if (IsActorClass(className))
             {
-                var actorData = ExtractActorFromExport(asset, export, i, className);
+                var actorData = ExtractActorFromExport(asset, export, i, className, levelPrefix);
                 if (actorData != null)
                 {
                     actors.Add(actorData);
@@ -180,10 +222,10 @@ public sealed class LevelExtractor
         var levelName = Path.GetFileNameWithoutExtension(filePath);
         _logger.Info("Extracted {Count} actors from {Total} exports in {Name}",
             actors.Count, total, levelName);
-        return new LevelExtractionResult(levelName, actors.ToArray());
+        return new LevelExtractionResult(levelName, actors.ToArray(), positionOffset);
     }
 
-    private ActorData? ExtractActorFromRef(UAsset asset, FPackageIndex actorRef, int index)
+    private ActorData? ExtractActorFromRef(UAsset asset, FPackageIndex actorRef, int index, string levelPrefix)
     {
         if (!actorRef.IsExport()) return null;
 
@@ -192,10 +234,10 @@ public sealed class LevelExtractor
 
         var export = asset.Exports[exportIndex];
         var className = GetExportClassName(export, asset);
-        return ExtractActorFromExport(asset, export, index, className);
+        return ExtractActorFromExport(asset, export, index, className, levelPrefix);
     }
 
-    private ActorData? ExtractActorFromExport(UAsset asset, Export export, int index, string className)
+    private ActorData? ExtractActorFromExport(UAsset asset, Export export, int index, string className, string levelPrefix)
     {
         var name = export.ObjectName?.Value?.Value ?? $"Actor_{index}";
         var exportIndex = asset.Exports.IndexOf(export);
@@ -240,7 +282,7 @@ public sealed class LevelExtractor
         }
 
         return new ActorData(
-            $"actor-{index}",
+            $"{levelPrefix}:actor-{index}",
             name,
             className,
             meshPath,
@@ -542,7 +584,15 @@ public sealed class LevelExtractor
             || className == "DirectionalLight"
             || className == "CameraActor"
             || className == "PlayerStart"
-            || className == "Brush";
+            || className == "Brush"
+            || IsLandscapeActorClass(className);
+    }
+
+    internal static bool IsLandscapeActorClass(string className)
+    {
+        return className is "Landscape"
+            or "LandscapeProxy"
+            or "LandscapeStreamingProxy";
     }
 
     private static bool IsStaticMeshComponent(string className)

@@ -70,6 +70,15 @@
         title={property.path.join(' / ')}
         onclick={() => hasChildren && properties.togglePropertyExpand(pathKey)}
     >
+        {#if hasChildren}
+            <span class="expand-chevron" class:expanded={isExpanded}>
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M6 4l4 4-4 4z" />
+                </svg>
+            </span>
+        {:else}
+            <span class="expand-spacer"></span>
+        {/if}
         <span class="icon" style="color: {valueColor}">
             {#if property.type === 'struct' || property.type === 'object'}
                 <svg viewBox="0 0 16 16" fill="currentColor">
@@ -185,21 +194,22 @@
                 if ('a' in c) return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`;
                 return `rgb(${c.r}, ${c.g}, ${c.b})`;
             }
-            // Handle resolved object references
-            if ('Name' in obj && 'RefType' in obj) {
-                const ref = obj as { Name: string; Class?: string; RefType: string };
-                if (ref.Class) return `${ref.Name} (${ref.Class})`;
-                return ref.Name;
+            // Handle resolved object references (camelCase from C# serialization)
+            if ('name' in obj && 'refType' in obj) {
+                const ref = obj as { name: string; class?: string; refType: string };
+                if (ref.class) return `${ref.name} (${ref.class})`;
+                return ref.name;
             }
-            // Handle soft object references
-            if ('AssetPath' in obj) {
-                const soft = obj as { AssetPath: string; SubPath?: string };
-                if (soft.SubPath) return `${soft.AssetPath}:${soft.SubPath}`;
-                return soft.AssetPath || 'None';
+            // Handle soft object references (camelCase from C# serialization)
+            if ('assetPath' in obj) {
+                const soft = obj as { assetPath: string; subPath?: string };
+                if (soft.subPath) return `${soft.assetPath}:${soft.subPath}`;
+                return soft.assetPath || 'None';
             }
-            // Handle struct summary {Type, PropertyCount}
-            if ('Type' in obj && 'PropertyCount' in obj) {
-                return `${obj.Type}`;
+            // Handle struct summary {type, propertyCount} (camelCase from C# serialization)
+            if ('type' in obj && 'propertyCount' in obj) {
+                const count = obj.propertyCount as number;
+                return `type: ${obj.type}, propertyCount: ${count}`;
             }
             // Generic small object: show key-value pairs
             if (keys.length > 0 && keys.length <= 4) {
@@ -240,6 +250,31 @@
 
     .property-name.has-children {
         cursor: pointer;
+    }
+
+    .expand-chevron {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        transition: transform var(--transition-fast);
+    }
+
+    .expand-chevron.expanded {
+        transform: rotate(90deg);
+    }
+
+    .expand-chevron svg {
+        width: 10px;
+        height: 10px;
+    }
+
+    .expand-spacer {
+        width: 14px;
+        flex-shrink: 0;
     }
 
     .icon {
