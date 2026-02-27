@@ -1,9 +1,12 @@
 // Selection Handler - Handles selection state changes
 //
 // Manages the current selection state and notifies when it changes.
+// Handles all selection and expand/collapse IPC actions directly.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
@@ -12,19 +15,20 @@ namespace UAssetViewer.Bridge.Handlers;
 
 /// <summary>
 /// Handler for selection-related IPC messages.
-/// Manages selection state for tree nodes.
+/// Manages selection state for tree nodes, including expand/collapse operations.
 /// </summary>
 public sealed class SelectionHandler : IMessageHandler
 {
     private readonly IAppLogger _logger;
-    private SelectionState _state = new(null, Array.Empty<string>());
+    private string? _selectedId;
+    private readonly HashSet<string> _expandedIds = new();
 
     public string MessageType => MessageTypes.Selection;
 
     /// <summary>
     /// Gets the current selection state.
     /// </summary>
-    public SelectionState CurrentState => _state;
+    public SelectionState CurrentState => BuildState();
 
     /// <summary>
     /// Event raised when selection changes.
@@ -38,7 +42,9 @@ public sealed class SelectionHandler : IMessageHandler
 
     public bool CanHandle(string action)
     {
-        return action is "select" or "getState" or "setExpanded";
+        return action is "select" or "getState" or "setExpanded"
+            or "toggle" or "expand" or "collapse"
+            or "expandAll" or "collapseAll" or "collapseBranch";
     }
 
     public Task<IpcMessage?> HandleAsync(IpcMessage message)
@@ -50,29 +56,36 @@ public sealed class SelectionHandler : IMessageHandler
             "select" => HandleSelect(message),
             "getState" => HandleGetState(message),
             "setExpanded" => HandleSetExpanded(message),
+            "toggle" => HandleToggle(message),
+            "expand" => HandleExpand(message),
+            "collapse" => HandleCollapse(message),
+            "expandAll" => HandleExpandAll(message),
+            "collapseAll" => HandleCollapseAll(message),
+            "collapseBranch" => HandleCollapseBranch(message),
             _ => Task.FromResult<IpcMessage?>(null),
         };
     }
+
+    // -----------------------------------------------------------------
+    // IPC action handlers
+    // -----------------------------------------------------------------
 
     private Task<IpcMessage?> HandleSelect(IpcMessage message)
     {
         string? selectedId = null;
 
-        if (message.Payload is System.Text.Json.JsonElement element &&
+        if (message.Payload is JsonElement element &&
             element.TryGetProperty("id", out var idProp))
         {
             selectedId = idProp.GetString();
         }
 
-        _logger.Info("Selection changed to: {Id}", selectedId ?? "(none)");
-
-        _state = _state with { SelectedId = selectedId };
-        SelectionChanged?.Invoke(_state);
+        var state = SelectNode(selectedId);
 
         var response = new IpcMessage(
             MessageTypes.Selection,
             "update",
-            _state,
+            state,
             message.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         );
@@ -85,7 +98,7 @@ public sealed class SelectionHandler : IMessageHandler
         var response = new IpcMessage(
             MessageTypes.Selection,
             "state",
-            _state,
+            BuildState(),
             message.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         );
@@ -95,34 +108,105 @@ public sealed class SelectionHandler : IMessageHandler
 
     private Task<IpcMessage?> HandleSetExpanded(IpcMessage message)
     {
-        string[]? ids = null;
-
-        if (message.Payload is System.Text.Json.JsonElement element &&
+        if (message.Payload is JsonElement element &&
             element.TryGetProperty("expandedIds", out var idsProp) &&
-            idsProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+            idsProp.ValueKind == JsonValueKind.Array)
         {
-            var list = new System.Collections.Generic.List<string>();
+            var list = new List<string>();
             foreach (var item in idsProp.EnumerateArray())
             {
                 var s = item.GetString();
                 if (s != null) list.Add(s);
             }
-            ids = list.ToArray();
-        }
 
-        if (ids != null)
-        {
-            _state = _state with { ExpandedIds = ids };
-            SelectionChanged?.Invoke(_state);
+            _expandedIds.Clear();
+            _expandedIds.UnionWith(list);
+            SelectionChanged?.Invoke(BuildState());
         }
 
         return Task.FromResult<IpcMessage?>(new IpcMessage(
             MessageTypes.Selection,
             "update",
-            _state,
+            BuildState(),
             message.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         ));
+    }
+
+    private Task<IpcMessage?> HandleToggle(IpcMessage message)
+    {
+        var id = ParseId(message.Payload);
+        if (string.IsNullOrEmpty(id))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in toggle request"));
+
+        ToggleExpanded(id);
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", BuildState(),
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleExpand(IpcMessage message)
+    {
+        var id = ParseId(message.Payload);
+        if (string.IsNullOrEmpty(id))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in expand request"));
+
+        SetNodeExpanded(id, true);
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", BuildState(),
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleCollapse(IpcMessage message)
+    {
+        var id = ParseId(message.Payload);
+        if (string.IsNullOrEmpty(id))
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Missing id in collapse request"));
+
+        SetNodeExpanded(id, false);
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", BuildState(),
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleExpandAll(IpcMessage message)
+    {
+        var ids = ParseIds(message.Payload);
+
+        if (ids != null && ids.Length > 0)
+        {
+            ExpandIds(ids);
+        }
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", BuildState(),
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleCollapseAll(IpcMessage message)
+    {
+        CollapseAll();
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", BuildState(),
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+
+    private Task<IpcMessage?> HandleCollapseBranch(IpcMessage message)
+    {
+        var ids = ParseIds(message.Payload);
+
+        if (ids != null && ids.Length > 0)
+        {
+            CollapseIds(ids);
+        }
+
+        return Task.FromResult<IpcMessage?>(new IpcMessage(
+            MessageTypes.Selection, "update", BuildState(),
+            message.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
     }
 
     // -----------------------------------------------------------------
@@ -130,17 +214,28 @@ public sealed class SelectionHandler : IMessageHandler
     // -----------------------------------------------------------------
 
     /// <summary>
+    /// Selects a node ID (or null to clear selection).
+    /// </summary>
+    public SelectionState SelectNode(string? id)
+    {
+        _logger.Info("Selection changed to: {Id}", id ?? "(none)");
+        _selectedId = id;
+        var state = BuildState();
+        SelectionChanged?.Invoke(state);
+        return state;
+    }
+
+    /// <summary>
     /// Toggles expansion of a single node.
     /// </summary>
     public SelectionState ToggleExpanded(string id)
     {
-        var list = new System.Collections.Generic.List<string>(_state.ExpandedIds);
-        if (!list.Remove(id))
-            list.Add(id);
+        if (!_expandedIds.Remove(id))
+            _expandedIds.Add(id);
 
-        _state = _state with { ExpandedIds = list.ToArray() };
-        SelectionChanged?.Invoke(_state);
-        return _state;
+        var state = BuildState();
+        SelectionChanged?.Invoke(state);
+        return state;
     }
 
     /// <summary>
@@ -148,15 +243,14 @@ public sealed class SelectionHandler : IMessageHandler
     /// </summary>
     public SelectionState SetNodeExpanded(string id, bool expanded)
     {
-        var list = new System.Collections.Generic.List<string>(_state.ExpandedIds);
-        if (expanded && !list.Contains(id))
-            list.Add(id);
-        else if (!expanded)
-            list.Remove(id);
+        if (expanded)
+            _expandedIds.Add(id);
+        else
+            _expandedIds.Remove(id);
 
-        _state = _state with { ExpandedIds = list.ToArray() };
-        SelectionChanged?.Invoke(_state);
-        return _state;
+        var state = BuildState();
+        SelectionChanged?.Invoke(state);
+        return state;
     }
 
     /// <summary>
@@ -164,9 +258,11 @@ public sealed class SelectionHandler : IMessageHandler
     /// </summary>
     public SelectionState CollapseAll()
     {
-        _state = _state with { ExpandedIds = Array.Empty<string>() };
-        SelectionChanged?.Invoke(_state);
-        return _state;
+        _expandedIds.Clear();
+
+        var state = BuildState();
+        SelectionChanged?.Invoke(state);
+        return state;
     }
 
     /// <summary>
@@ -174,12 +270,11 @@ public sealed class SelectionHandler : IMessageHandler
     /// </summary>
     public SelectionState ExpandIds(string[] ids)
     {
-        var set = new System.Collections.Generic.HashSet<string>(_state.ExpandedIds);
-        foreach (var id in ids) set.Add(id);
+        _expandedIds.UnionWith(ids);
 
-        _state = _state with { ExpandedIds = set.ToArray() };
-        SelectionChanged?.Invoke(_state);
-        return _state;
+        var state = BuildState();
+        SelectionChanged?.Invoke(state);
+        return state;
     }
 
     /// <summary>
@@ -187,11 +282,51 @@ public sealed class SelectionHandler : IMessageHandler
     /// </summary>
     public SelectionState CollapseIds(string[] ids)
     {
-        var set = new System.Collections.Generic.HashSet<string>(_state.ExpandedIds);
-        foreach (var id in ids) set.Remove(id);
+        _expandedIds.ExceptWith(ids);
 
-        _state = _state with { ExpandedIds = set.ToArray() };
-        SelectionChanged?.Invoke(_state);
-        return _state;
+        var state = BuildState();
+        SelectionChanged?.Invoke(state);
+        return state;
+    }
+
+    // -----------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------
+
+    private SelectionState BuildState() => new(_selectedId, _expandedIds.ToArray());
+
+    private static string? ParseId(object? payload)
+    {
+        if (payload is JsonElement element)
+        {
+            if (element.TryGetProperty("nodeId", out var prop)) return prop.GetString();
+            if (element.TryGetProperty("id", out var idProp)) return idProp.GetString();
+        }
+        return null;
+    }
+
+    private static string[]? ParseIds(object? payload)
+    {
+        if (payload is JsonElement element &&
+            element.TryGetProperty("ids", out var idsProp) &&
+            idsProp.ValueKind == JsonValueKind.Array)
+        {
+            var list = new List<string>();
+            foreach (var item in idsProp.EnumerateArray())
+            {
+                var s = item.GetString();
+                if (s != null) list.Add(s);
+            }
+            return list.ToArray();
+        }
+        return null;
+    }
+
+    private static IpcMessage CreateErrorResponse(IpcMessage request, string errorMessage)
+    {
+        return new IpcMessage(
+            MessageTypes.Error, "error",
+            new ErrorResponse(ErrorCodes.InvalidRequest, errorMessage, request.Id),
+            request.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
     }
 }
