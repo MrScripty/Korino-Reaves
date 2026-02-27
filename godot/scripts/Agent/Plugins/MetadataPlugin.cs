@@ -3,6 +3,7 @@
 // Exposes bounded metadata queries over the dependency database.
 
 using System.ComponentModel;
+using System.Threading;
 using Microsoft.SemanticKernel;
 using UAssetViewer.Agent.Capabilities;
 
@@ -24,8 +25,9 @@ public sealed class MetadataPlugin
     [Description("Gets a bounded metadata snapshot (summary/imports/exports/properties/edges) for an asset path.")]
     public AssetMetadataSnapshot? GetAssetMetadata(
         [Description("Asset path relative to project root")] string assetPath,
-        [Description("Maximum rows per table in the snapshot")] int rowLimit = 200)
+        [Description("Maximum rows per table in the snapshot")] int rowLimit = 200,
+        CancellationToken ct = default)
     {
-        return _metadata.GetAssetMetadata(assetPath, rowLimit);
+        return _metadata.GetAssetMetadata(assetPath, rowLimit, ct);
     }
 }

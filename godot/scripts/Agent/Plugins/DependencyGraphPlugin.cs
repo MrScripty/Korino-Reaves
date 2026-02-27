@@ -4,6 +4,7 @@
 // through the capability layer.
 
 using System.ComponentModel;
+using System.Threading;
 using Microsoft.SemanticKernel;
 using UAssetViewer.Agent.Capabilities;
 
@@ -23,27 +24,29 @@ public sealed class DependencyGraphPlugin
 
     [KernelFunction("get_dependency_graph_stats")]
     [Description("Gets dependency graph availability and summary statistics for the current project.")]
-    public DependencyGraphStats GetDependencyGraphStats()
+    public DependencyGraphStats GetDependencyGraphStats(CancellationToken ct = default)
     {
-        return _dependencyGraph.GetStats();
+        return _dependencyGraph.GetStats(ct);
     }
 
     [KernelFunction("get_dependencies")]
     [Description("Gets direct dependencies for an asset path.")]
     public DependencyEdge[] GetDependencies(
         [Description("Asset path relative to project root, e.g. 'Content/Foo.uasset'")] string assetPath,
-        [Description("Maximum number of results")] int limit = 100)
+        [Description("Maximum number of results")] int limit = 100,
+        CancellationToken ct = default)
     {
-        return _dependencyGraph.GetDependencies(assetPath, limit);
+        return _dependencyGraph.GetDependencies(assetPath, limit, ct);
     }
 
     [KernelFunction("get_dependents")]
     [Description("Gets direct dependents (reverse edges) for an asset path.")]
     public DependencyEdge[] GetDependents(
         [Description("Asset path relative to project root")] string assetPath,
-        [Description("Maximum number of results")] int limit = 100)
+        [Description("Maximum number of results")] int limit = 100,
+        CancellationToken ct = default)
     {
-        return _dependencyGraph.GetDependents(assetPath, limit);
+        return _dependencyGraph.GetDependents(assetPath, limit, ct);
     }
 
     [KernelFunction("get_related_assets")]
@@ -51,18 +54,20 @@ public sealed class DependencyGraphPlugin
     public string[] GetRelatedAssets(
         [Description("Asset path relative to project root")] string assetPath,
         [Description("Traversal depth")] int maxDepth = 3,
-        [Description("Maximum number of results")] int limit = 200)
+        [Description("Maximum number of results")] int limit = 200,
+        CancellationToken ct = default)
     {
-        return _dependencyGraph.GetRelated(assetPath, maxDepth, limit);
+        return _dependencyGraph.GetRelated(assetPath, maxDepth, limit, ct);
     }
 
     [KernelFunction("search_assets_by_class")]
     [Description("Searches project assets by class name.")]
     public ClassSearchHit[] SearchAssetsByClass(
         [Description("Class name to search for")] string className,
-        [Description("Maximum number of results")] int limit = 100)
+        [Description("Maximum number of results")] int limit = 100,
+        CancellationToken ct = default)
     {
-        return _dependencyGraph.SearchByClass(className, limit);
+        return _dependencyGraph.SearchByClass(className, limit, ct);
     }
 
     [KernelFunction("search_asset_properties")]
@@ -70,8 +75,9 @@ public sealed class DependencyGraphPlugin
     public PropertySearchHit[] SearchAssetProperties(
         [Description("Property name to search for")] string propertyName,
         [Description("Optional value filter")] string? valueFilter = null,
-        [Description("Maximum number of results")] int limit = 100)
+        [Description("Maximum number of results")] int limit = 100,
+        CancellationToken ct = default)
     {
-        return _dependencyGraph.SearchProperties(propertyName, valueFilter, limit);
+        return _dependencyGraph.SearchProperties(propertyName, valueFilter, limit, ct);
     }
 }

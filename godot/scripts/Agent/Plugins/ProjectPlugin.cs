@@ -4,6 +4,7 @@
 // capability layer.
 
 using System.ComponentModel;
+using System.Threading;
 using Microsoft.SemanticKernel;
 using UAssetViewer.Agent.Capabilities;
 using UAssetViewer.Models;
@@ -31,33 +32,36 @@ public sealed class ProjectPlugin
 
     [KernelFunction("get_project_root_nodes")]
     [Description("Gets root nodes of the current project file tree.")]
-    public TreeNode[] GetProjectRootNodes()
+    public TreeNode[] GetProjectRootNodes(CancellationToken ct = default)
     {
-        return _projectExplorer.GetRootNodes();
+        return _projectExplorer.GetRootNodes(ct);
     }
 
     [KernelFunction("get_project_children")]
     [Description("Gets child nodes for a project tree node ID.")]
     public TreeNode[] GetProjectChildren(
-        [Description("Tree node ID, e.g. 'folder:Content'")] string nodeId)
+        [Description("Tree node ID, e.g. 'folder:Content'")] string nodeId,
+        CancellationToken ct = default)
     {
-        return _projectExplorer.GetChildren(nodeId);
+        return _projectExplorer.GetChildren(nodeId, ct);
     }
 
     [KernelFunction("search_project_nodes")]
     [Description("Searches project tree nodes by name or node ID.")]
     public TreeNode[] SearchProjectNodes(
         [Description("Search query")] string query,
-        [Description("Maximum results")] int limit = 100)
+        [Description("Maximum results")] int limit = 100,
+        CancellationToken ct = default)
     {
-        return _projectExplorer.Search(query, limit);
+        return _projectExplorer.Search(query, limit, ct);
     }
 
     [KernelFunction("get_project_node")]
     [Description("Gets a project tree node by ID.")]
     public TreeNode? GetProjectNode(
-        [Description("Tree node ID")] string nodeId)
+        [Description("Tree node ID")] string nodeId,
+        CancellationToken ct = default)
     {
-        return _projectExplorer.GetNode(nodeId);
+        return _projectExplorer.GetNode(nodeId, ct);
     }
 }

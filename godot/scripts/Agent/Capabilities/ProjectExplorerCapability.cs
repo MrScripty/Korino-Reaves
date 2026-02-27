@@ -5,6 +5,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
 using UAssetViewer.Assets;
 using UAssetViewer.Infrastructure;
 using UAssetViewer.Models;
@@ -17,94 +19,149 @@ namespace UAssetViewer.Agent.Capabilities;
 public sealed class ProjectExplorerCapability : IProjectExplorerCapability
 {
     private const int DefaultSearchLimit = 100;
-    private const int MaxSearchLimit = 1000;
 
     private readonly IProjectPathProvider _projectPathProvider;
     private readonly FileTreeBuilder _fileTreeBuilder;
     private readonly IAppLogger _logger;
+    private readonly AgentExecutionPolicy _policy;
 
     public ProjectExplorerCapability(
         IProjectPathProvider projectPathProvider,
         FileTreeBuilder fileTreeBuilder,
-        IAppLogger logger)
+        IAppLogger logger,
+        AgentExecutionPolicy? policy = null)
     {
         _projectPathProvider = projectPathProvider ?? throw new ArgumentNullException(nameof(projectPathProvider));
         _fileTreeBuilder = fileTreeBuilder ?? throw new ArgumentNullException(nameof(fileTreeBuilder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _policy = policy ?? AgentExecutionPolicy.ReadOnlyDefault;
     }
 
     /// <inheritdoc />
     public string? CurrentProjectPath => _projectPathProvider.CurrentProjectPath;
 
     /// <inheritdoc />
-    public TreeNode[] GetRootNodes()
+    public TreeNode[] GetRootNodes(CancellationToken ct = default)
     {
-        return BuildTree();
+        var started = Stopwatch.StartNew();
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var nodes = BuildTree(ct);
+            LogTelemetry("getRootNodes", started.ElapsedMilliseconds, resultCount: nodes.Length);
+            return nodes;
+        }
+        catch (OperationCanceledException)
+        {
+            LogTelemetry("getRootNodes", started.ElapsedMilliseconds, cancelled: true);
+            throw;
+        }
     }
 
     /// <inheritdoc />
-    public TreeNode[] GetChildren(string nodeId)
+    public TreeNode[] GetChildren(string nodeId, CancellationToken ct = default)
     {
+        var started = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(nodeId))
         {
+            LogTelemetry("getChildren", started.ElapsedMilliseconds, resultCount: 0);
             return Array.Empty<TreeNode>();
         }
 
-        var node = GetNode(nodeId);
-        return node?.Children ?? Array.Empty<TreeNode>();
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var node = GetNode(nodeId, ct);
+            var children = node?.Children ?? Array.Empty<TreeNode>();
+            LogTelemetry("getChildren", started.ElapsedMilliseconds, resultCount: children.Length);
+            return children;
+        }
+        catch (OperationCanceledException)
+        {
+            LogTelemetry("getChildren", started.ElapsedMilliseconds, cancelled: true);
+            throw;
+        }
     }
 
     /// <inheritdoc />
-    public TreeNode[] Search(string query, int limit = DefaultSearchLimit)
+    public TreeNode[] Search(string query, int limit = DefaultSearchLimit, CancellationToken ct = default)
     {
+        var started = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(query))
         {
+            LogTelemetry("search", started.ElapsedMilliseconds, requestedLimit: limit, boundedLimit: 0, resultCount: 0);
             return Array.Empty<TreeNode>();
         }
 
-        var boundedLimit = ClampLimit(limit, DefaultSearchLimit, MaxSearchLimit);
-        var tree = BuildTree();
-        var matches = new List<TreeNode>(Math.Min(boundedLimit, DefaultSearchLimit));
-        var normalizedQuery = query.Trim();
-
-        foreach (var node in Traverse(tree))
+        var boundedLimit = _policy.ClampProjectSearchLimit(limit, DefaultSearchLimit);
+        try
         {
-            if (matches.Count >= boundedLimit)
+            ct.ThrowIfCancellationRequested();
+            var tree = BuildTree(ct);
+            var matches = new List<TreeNode>(Math.Min(boundedLimit, DefaultSearchLimit));
+            var normalizedQuery = query.Trim();
+
+            foreach (var node in Traverse(tree, ct))
             {
-                break;
+                ct.ThrowIfCancellationRequested();
+                if (matches.Count >= boundedLimit)
+                {
+                    break;
+                }
+
+                if (ContainsIgnoreCase(node.Name, normalizedQuery) ||
+                    ContainsIgnoreCase(node.Id, normalizedQuery))
+                {
+                    matches.Add(node);
+                }
             }
 
-            if (ContainsIgnoreCase(node.Name, normalizedQuery) ||
-                ContainsIgnoreCase(node.Id, normalizedQuery))
-            {
-                matches.Add(node);
-            }
+            var result = matches.ToArray();
+            LogTelemetry("search", started.ElapsedMilliseconds, requestedLimit: limit, boundedLimit: boundedLimit, resultCount: result.Length);
+            return result;
         }
-
-        return matches.ToArray();
+        catch (OperationCanceledException)
+        {
+            LogTelemetry("search", started.ElapsedMilliseconds, requestedLimit: limit, boundedLimit: boundedLimit, cancelled: true);
+            throw;
+        }
     }
 
     /// <inheritdoc />
-    public TreeNode? GetNode(string nodeId)
+    public TreeNode? GetNode(string nodeId, CancellationToken ct = default)
     {
+        var started = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(nodeId))
         {
+            LogTelemetry("getNode", started.ElapsedMilliseconds, resultCount: 0);
             return null;
         }
 
-        var tree = BuildTree();
-        foreach (var node in Traverse(tree))
+        try
         {
-            if (string.Equals(node.Id, nodeId, StringComparison.Ordinal))
+            ct.ThrowIfCancellationRequested();
+            var tree = BuildTree(ct);
+            foreach (var node in Traverse(tree, ct))
             {
-                return node;
+                ct.ThrowIfCancellationRequested();
+                if (string.Equals(node.Id, nodeId, StringComparison.Ordinal))
+                {
+                    LogTelemetry("getNode", started.ElapsedMilliseconds, resultCount: 1);
+                    return node;
+                }
             }
-        }
 
-        return null;
+            LogTelemetry("getNode", started.ElapsedMilliseconds, resultCount: 0);
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            LogTelemetry("getNode", started.ElapsedMilliseconds, cancelled: true);
+            throw;
+        }
     }
 
-    private TreeNode[] BuildTree()
+    private TreeNode[] BuildTree(CancellationToken ct)
     {
         var projectPath = _projectPathProvider.CurrentProjectPath;
         if (string.IsNullOrWhiteSpace(projectPath))
@@ -114,7 +171,12 @@ public sealed class ProjectExplorerCapability : IProjectExplorerCapability
 
         try
         {
+            ct.ThrowIfCancellationRequested();
             return _fileTreeBuilder.BuildFileTree(projectPath);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -123,11 +185,12 @@ public sealed class ProjectExplorerCapability : IProjectExplorerCapability
         }
     }
 
-    private static IEnumerable<TreeNode> Traverse(TreeNode[] nodes)
+    private static IEnumerable<TreeNode> Traverse(TreeNode[] nodes, CancellationToken ct)
     {
         var stack = new Stack<TreeNode>(nodes);
         while (stack.Count > 0)
         {
+            ct.ThrowIfCancellationRequested();
             var node = stack.Pop();
             yield return node;
 
@@ -148,13 +211,26 @@ public sealed class ProjectExplorerCapability : IProjectExplorerCapability
         return value.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static int ClampLimit(int requested, int fallback, int max)
+    private void LogTelemetry(
+        string operation,
+        long durationMs,
+        int? requestedLimit = null,
+        int? boundedLimit = null,
+        int? resultCount = null,
+        bool cancelled = false)
     {
-        if (requested <= 0)
-        {
-            return fallback;
-        }
+        var safeRequestedLimit = requestedLimit ?? -1;
+        var safeBoundedLimit = boundedLimit ?? -1;
+        var safeResultCount = resultCount ?? -1;
 
-        return Math.Min(requested, max);
+        _logger.Info(
+            "Agent capability telemetry: capability={Capability} operation={Operation} durationMs={DurationMs} requestedLimit={RequestedLimit} boundedLimit={BoundedLimit} resultCount={ResultCount} cancelled={Cancelled}",
+            nameof(ProjectExplorerCapability),
+            operation,
+            durationMs,
+            safeRequestedLimit,
+            safeBoundedLimit,
+            safeResultCount,
+            cancelled);
     }
 }

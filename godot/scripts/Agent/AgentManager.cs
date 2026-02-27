@@ -65,17 +65,17 @@ public sealed class AgentManager : IDisposable
                 new Uri(config.OllamaEndpoint));
         }
 
-        builder.Plugins.AddFromObject(new AssetPlugin(assetService), "Asset");
+        builder.Plugins.AddFromObject(new AssetPlugin(assetService, config.ExecutionPolicy), "Asset");
         builder.Plugins.AddFromObject(new NavigationPlugin(treeService), "Navigation");
-        builder.Plugins.AddFromObject(new EditPlugin(propertyService, assetService), "Edit");
-        builder.Plugins.AddFromObject(new ModelPlugin(modelLibrary), "Model");
+        builder.Plugins.AddFromObject(new EditPlugin(propertyService, assetService, config.ExecutionPolicy), "Edit");
+        builder.Plugins.AddFromObject(new ModelPlugin(modelLibrary, config.ExecutionPolicy), "Model");
 
         if (capabilityRegistry != null)
         {
             builder.Plugins.AddFromObject(new ProjectPlugin(capabilityRegistry.ProjectExplorer), "Project");
             builder.Plugins.AddFromObject(new DependencyGraphPlugin(capabilityRegistry.DependencyGraph), "DependencyGraph");
             builder.Plugins.AddFromObject(new MetadataPlugin(capabilityRegistry.Metadata), "Metadata");
-            builder.Plugins.AddFromObject(new GuiPlugin(capabilityRegistry.GuiSelection), "Gui");
+            builder.Plugins.AddFromObject(new GuiPlugin(capabilityRegistry.GuiSelection, config.ExecutionPolicy), "Gui");
         }
 
         var kernel = builder.Build();

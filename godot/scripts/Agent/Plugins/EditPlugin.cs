@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
+using UAssetViewer.Agent;
 using UAssetViewer.Assets;
 using UAssetViewer.Models;
 using UAssetViewer.Services;
@@ -20,11 +21,13 @@ public sealed class EditPlugin
 {
     private readonly PropertyService _propertyService;
     private readonly IAssetService _assetService;
+    private readonly AgentExecutionPolicy _policy;
 
-    public EditPlugin(PropertyService propertyService, IAssetService assetService)
+    public EditPlugin(PropertyService propertyService, IAssetService assetService, AgentExecutionPolicy policy)
     {
         _propertyService = propertyService;
         _assetService = assetService;
+        _policy = policy;
     }
 
     [KernelFunction("get_property")]
@@ -44,6 +47,7 @@ public sealed class EditPlugin
         [Description("Property path using '/' separator")] string path,
         [Description("New value to set (as string, will be converted to appropriate type)")] string value)
     {
+        _policy.EnsurePropertyEditsAllowed("set_property");
         var pathSegments = path.Split('/');
         var asset = GetLoadedAsset();
         _propertyService.SetValue(asset, pathSegments, value);

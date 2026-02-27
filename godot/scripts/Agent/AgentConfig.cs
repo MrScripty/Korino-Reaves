@@ -51,6 +51,11 @@ public sealed class AgentConfig
     public bool VerboseLogging { get; init; }
 
     /// <summary>
+    /// Execution policy used to guard side effects and bound query sizes.
+    /// </summary>
+    public AgentExecutionPolicy ExecutionPolicy { get; init; } = AgentExecutionPolicy.ReadOnlyDefault;
+
+    /// <summary>
     /// Creates a default configuration.
     /// </summary>
     public static AgentConfig Default => new();

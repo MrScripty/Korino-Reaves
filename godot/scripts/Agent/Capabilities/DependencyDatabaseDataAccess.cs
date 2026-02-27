@@ -4,6 +4,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using UAssetViewer.Data;
 using UAssetViewer.Infrastructure;
 
@@ -22,15 +23,19 @@ public sealed class DependencyDatabaseDataAccess : IDependencyDataAccess
     }
 
     /// <inheritdoc />
-    public DependencyGraphStats GetStats(string projectPath)
+    public DependencyGraphStats GetStats(string projectPath, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         if (!DependencyDatabase.Exists(projectPath))
         {
             return new DependencyGraphStats(false);
         }
 
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         var stats = db.GetStats();
+        ct.ThrowIfCancellationRequested();
         if (stats == null)
         {
             return new DependencyGraphStats(true);
@@ -45,9 +50,11 @@ public sealed class DependencyDatabaseDataAccess : IDependencyDataAccess
     }
 
     /// <inheritdoc />
-    public DependencyEdge[] GetDependencies(string projectPath, string assetPath, int limit)
+    public DependencyEdge[] GetDependencies(string projectPath, string assetPath, int limit, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         return db.GetDependencies(assetPath)
             .Take(limit)
             .Select(d => new DependencyEdge(d.Path, d.RefType))
@@ -55,9 +62,11 @@ public sealed class DependencyDatabaseDataAccess : IDependencyDataAccess
     }
 
     /// <inheritdoc />
-    public DependencyEdge[] GetDependents(string projectPath, string assetPath, int limit)
+    public DependencyEdge[] GetDependents(string projectPath, string assetPath, int limit, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         return db.GetDependents(assetPath)
             .Take(limit)
             .Select(d => new DependencyEdge(d.Path, d.RefType))
@@ -65,18 +74,22 @@ public sealed class DependencyDatabaseDataAccess : IDependencyDataAccess
     }
 
     /// <inheritdoc />
-    public string[] GetRelated(string projectPath, string assetPath, int maxDepth, int limit)
+    public string[] GetRelated(string projectPath, string assetPath, int maxDepth, int limit, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         return db.GetRelatedCluster(assetPath, maxDepth)
             .Take(limit)
             .ToArray();
     }
 
     /// <inheritdoc />
-    public ClassSearchHit[] SearchByClass(string projectPath, string className, int limit)
+    public ClassSearchHit[] SearchByClass(string projectPath, string className, int limit, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         return db.SearchByClassName(className, limit)
             .Select(hit => new ClassSearchHit(
                 hit.AssetPath,
@@ -87,9 +100,16 @@ public sealed class DependencyDatabaseDataAccess : IDependencyDataAccess
     }
 
     /// <inheritdoc />
-    public PropertySearchHit[] SearchProperties(string projectPath, string propertyName, string? valueFilter, int limit)
+    public PropertySearchHit[] SearchProperties(
+        string projectPath,
+        string propertyName,
+        string? valueFilter,
+        int limit,
+        CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         return db.SearchProperties(propertyName, valueFilter, limit)
             .Select(hit => new PropertySearchHit(
                 hit.AssetPath,
@@ -101,19 +121,26 @@ public sealed class DependencyDatabaseDataAccess : IDependencyDataAccess
     }
 
     /// <inheritdoc />
-    public AssetMetadataSnapshot? GetAssetMetadata(string projectPath, string assetPath, int rowLimit)
+    public AssetMetadataSnapshot? GetAssetMetadata(string projectPath, string assetPath, int rowLimit, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         using var db = OpenDatabase(projectPath);
+        ct.ThrowIfCancellationRequested();
         var info = db.GetAssetInfo(assetPath);
+        ct.ThrowIfCancellationRequested();
         if (info == null)
         {
             return null;
         }
 
         var imports = db.GetImports(assetPath);
+        ct.ThrowIfCancellationRequested();
         var exports = db.GetExports(assetPath);
+        ct.ThrowIfCancellationRequested();
         var properties = db.GetAllProperties(assetPath);
+        ct.ThrowIfCancellationRequested();
         var edges = db.GetEdges(assetPath);
+        ct.ThrowIfCancellationRequested();
 
         var summary = new AssetMetadataSummary(
             AssetPath: info.Path,

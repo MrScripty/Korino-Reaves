@@ -2,6 +2,7 @@
 //
 // Capability contract for traversing project files represented as tree nodes.
 
+using System.Threading;
 using UAssetViewer.Models;
 
 namespace UAssetViewer.Agent.Capabilities;
@@ -19,20 +20,20 @@ public interface IProjectExplorerCapability
     /// <summary>
     /// Gets root-level tree nodes for the current project.
     /// </summary>
-    TreeNode[] GetRootNodes();
+    TreeNode[] GetRootNodes(CancellationToken ct = default);
 
     /// <summary>
     /// Gets direct children for a tree node.
     /// </summary>
-    TreeNode[] GetChildren(string nodeId);
+    TreeNode[] GetChildren(string nodeId, CancellationToken ct = default);
 
     /// <summary>
     /// Searches nodes by display name and node ID.
     /// </summary>
-    TreeNode[] Search(string query, int limit = 100);
+    TreeNode[] Search(string query, int limit = 100, CancellationToken ct = default);
 
     /// <summary>
     /// Resolves a node by ID.
     /// </summary>
-    TreeNode? GetNode(string nodeId);
+    TreeNode? GetNode(string nodeId, CancellationToken ct = default);
 }

@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
+using UAssetViewer.Agent;
 
 namespace UAssetViewer.Agent.Plugins;
 
@@ -16,10 +17,12 @@ namespace UAssetViewer.Agent.Plugins;
 public sealed class ModelPlugin
 {
     private readonly IModelLibrary _library;
+    private readonly AgentExecutionPolicy _policy;
 
-    public ModelPlugin(IModelLibrary library)
+    public ModelPlugin(IModelLibrary library, AgentExecutionPolicy policy)
     {
         _library = library;
+        _policy = policy;
     }
 
     [KernelFunction("list_local_models")]
@@ -60,6 +63,7 @@ public sealed class ModelPlugin
         [Description("Quantization variant (e.g. 'Q4_K_M')")] string? quant = null,
         [Description("Specific filename to download")] string? filename = null)
     {
+        _policy.EnsureModelDownloadsAllowed("download_model");
         var request = new DownloadRequest(repoId, family, officialName, Quant: quant, Filename: filename);
         var downloadId = await _library.StartDownloadAsync(request).ConfigureAwait(false);
         return JsonSerializer.Serialize(new { downloadId, status = "started" });

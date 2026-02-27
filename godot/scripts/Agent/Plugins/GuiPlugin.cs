@@ -4,6 +4,7 @@
 
 using System.ComponentModel;
 using Microsoft.SemanticKernel;
+using UAssetViewer.Agent;
 using UAssetViewer.Agent.Capabilities;
 using UAssetViewer.Models;
 
@@ -15,10 +16,12 @@ namespace UAssetViewer.Agent.Plugins;
 public sealed class GuiPlugin
 {
     private readonly IGuiSelectionCapability _guiSelection;
+    private readonly AgentExecutionPolicy _policy;
 
-    public GuiPlugin(IGuiSelectionCapability guiSelection)
+    public GuiPlugin(IGuiSelectionCapability guiSelection, AgentExecutionPolicy policy)
     {
         _guiSelection = guiSelection;
+        _policy = policy;
     }
 
     [KernelFunction("get_selection_state")]
@@ -33,6 +36,7 @@ public sealed class GuiPlugin
     public SelectionState SelectNode(
         [Description("Node ID, e.g. 'file:Content/Foo.uasset'")] string nodeId)
     {
+        _policy.EnsureGuiMutationAllowed("select_node");
         return _guiSelection.SelectNode(nodeId);
     }
 
@@ -41,6 +45,7 @@ public sealed class GuiPlugin
     public SelectionState ExpandNode(
         [Description("Node ID")] string nodeId)
     {
+        _policy.EnsureGuiMutationAllowed("expand_node");
         return _guiSelection.ExpandNodes(new[] { nodeId });
     }
 
@@ -49,6 +54,7 @@ public sealed class GuiPlugin
     public SelectionState CollapseNode(
         [Description("Node ID")] string nodeId)
     {
+        _policy.EnsureGuiMutationAllowed("collapse_node");
         return _guiSelection.CollapseNodes(new[] { nodeId });
     }
 
@@ -56,6 +62,7 @@ public sealed class GuiPlugin
     [Description("Collapses all expanded nodes in the GUI.")]
     public SelectionState CollapseAllNodes()
     {
+        _policy.EnsureGuiMutationAllowed("collapse_all_nodes");
         return _guiSelection.CollapseAll();
     }
 }

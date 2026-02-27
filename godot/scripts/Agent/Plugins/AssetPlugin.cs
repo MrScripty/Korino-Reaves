@@ -5,6 +5,7 @@
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
+using UAssetViewer.Agent;
 using UAssetViewer.Models;
 using UAssetViewer.Services;
 
@@ -16,10 +17,12 @@ namespace UAssetViewer.Agent.Plugins;
 public sealed class AssetPlugin
 {
     private readonly IAssetService _assetService;
+    private readonly AgentExecutionPolicy _policy;
 
-    public AssetPlugin(IAssetService assetService)
+    public AssetPlugin(IAssetService assetService, AgentExecutionPolicy policy)
     {
         _assetService = assetService;
+        _policy = policy;
     }
 
     [KernelFunction("open_asset")]
@@ -48,6 +51,7 @@ public sealed class AssetPlugin
     [Description("Saves the currently loaded asset to disk.")]
     public async Task SaveAsset()
     {
+        _policy.EnsureAssetWritesAllowed("save_asset");
         await _assetService.SaveAsync().ConfigureAwait(false);
     }
 
@@ -56,6 +60,7 @@ public sealed class AssetPlugin
     public async Task SaveAssetAs(
         [Description("New path to save the asset")] string path)
     {
+        _policy.EnsureAssetWritesAllowed("save_asset_as");
         await _assetService.SaveAsAsync(path).ConfigureAwait(false);
     }
 
@@ -64,6 +69,7 @@ public sealed class AssetPlugin
     public async Task ExportJson(
         [Description("Path for the JSON output file")] string path)
     {
+        _policy.EnsureAssetWritesAllowed("export_json");
         await _assetService.ExportJsonAsync(path).ConfigureAwait(false);
     }
 
