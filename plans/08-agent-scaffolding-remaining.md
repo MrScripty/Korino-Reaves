@@ -49,17 +49,20 @@ Ship incrementally with low disruption to continued Korino development.
    - Added `KORINO_AGENT_ENABLED` feature flag for agent runtime enablement.
    - Disabled mode still registers `AgentHandler` with explicit unavailable reason.
 2. Document operational prerequisites and failure modes.
+   - Completed in `plans/10-agent-rollout-hardening.md`.
 3. Create smoke-test checklist for regressions in:
    - tree behavior
    - selection flow
    - dependency panel
    - property editing
+   - Completed in `plans/10-agent-rollout-hardening.md`.
 4. Add follow-up backlog for:
    - richer metadata pagination APIs
    - plugin permission tiers
    - model/runtime health diagnostics.
+   - Completed in `plans/10-agent-rollout-hardening.md`.
 
 ### Acceptance Criteria
 
 - Agent scaffolding can be toggled on/off safely.
-- Regression checklist passes before enabling by default.
+- Regression checklist is defined; execution is required before enabling by default.

@@ -108,8 +108,14 @@ Date: February 27, 2026
 
 - In progress:
   - Added runtime feature flag `KORINO_AGENT_ENABLED` for safe enable/disable rollout.
+  - Added rollout hardening guide with:
+    - operational prerequisites
+    - failure modes and recovery paths
+    - smoke-test checklist
+    - follow-up backlog
+    - `plans/10-agent-rollout-hardening.md`
 - Remaining:
-  - Hardening checklist and operational docs.
+  - Execute smoke checklist and confirm pass criteria before default enablement.
 
 ## References
 
