@@ -48,6 +48,28 @@ including mod porting between game versions.
 - External: `Microsoft.SemanticKernel`, `Microsoft.SemanticKernel.Connectors.Ollama`
 - Native: `libpumas_uniffi.so` (pumas-core via UniFFI, symlinked from pumas-library build)
 
+## Execution Policy
+
+Agent runtime now uses an execution policy with a read-only default:
+
+- Asset write operations disabled (`save_asset`, `save_asset_as`, `export_json`)
+- Property edits disabled (`set_property`)
+- Model downloads disabled (`download_model`)
+- GUI mutation enabled by default (`select_node`, expand/collapse actions)
+
+Environment variables can override policy at startup:
+
+- `KORINO_AGENT_ALLOW_WRITES` (master switch for write/edit/download)
+- `KORINO_AGENT_ALLOW_ASSET_WRITES`
+- `KORINO_AGENT_ALLOW_PROPERTY_EDITS`
+- `KORINO_AGENT_ALLOW_MODEL_DOWNLOADS`
+- `KORINO_AGENT_ALLOW_GUI_MUTATION`
+- `KORINO_AGENT_MAX_PROJECT_SEARCH_RESULTS`
+- `KORINO_AGENT_MAX_DEPENDENCY_RESULTS`
+- `KORINO_AGENT_MAX_DEPENDENCY_RELATED_RESULTS`
+- `KORINO_AGENT_MAX_DEPENDENCY_DEPTH`
+- `KORINO_AGENT_MAX_METADATA_ROWS`
+
 ## Usage Examples
 
 ```csharp

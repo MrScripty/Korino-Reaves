@@ -32,3 +32,6 @@ transport types directly.
 - All list/search methods are bounded for predictable runtime cost.
 - Adapters reuse existing systems (`FileTreeBuilder`, `DependencyDatabase`,
   `SelectionHandler`) to avoid parallel implementations.
+- Capability calls emit structured telemetry for operation auditability.
+- Long-running queries/traversals accept cancellation tokens for cooperative
+  cancellation.

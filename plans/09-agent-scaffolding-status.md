@@ -77,10 +77,27 @@ Date: February 27, 2026
 
 ## Not Yet Completed
 
-### Phase 4
+### Phase 4 (In Progress)
 
-- Execution policy enforcement (read-only default, side-effect gates).
-- Telemetry instrumentation and cancellation propagation across capability calls.
+- Implemented `AgentExecutionPolicy` with:
+  - read-only defaults for asset writes/property edits/model downloads
+  - policy-driven limits for project search, dependency traversal, and metadata rows
+- Added runtime policy wiring and env-driven overrides in `AgentRuntimeBootstrap`.
+- Enforced side-effect policy in plugins:
+  - `AssetPlugin` (save/save-as/export)
+  - `EditPlugin` (`set_property`)
+  - `ModelPlugin` (`download_model`)
+  - `GuiPlugin` mutation actions (select/expand/collapse)
+- Added structured capability telemetry (duration, requested vs bounded limits, result counts, cancellation/error markers).
+- Added cancellation token propagation through:
+  - capability interfaces/implementations
+  - dependency data-access interface/implementation
+  - capability-backed plugins
+- Added unit tests for:
+  - `AgentExecutionPolicy` defaults and guards
+  - cancellation behavior in dependency/metadata capabilities
+- Remaining in Phase 4:
+  - end-to-end integration test path (open project -> scan -> metadata query -> GUI selection)
 
 ### Phase 5
 
