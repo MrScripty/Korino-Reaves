@@ -71,6 +71,12 @@ Environment variables can override policy at startup:
 - `KORINO_AGENT_MAX_DEPENDENCY_DEPTH`
 - `KORINO_AGENT_MAX_METADATA_ROWS`
 
+## Rollout Hardening
+
+Rollout prerequisites, failure modes, and smoke-test checklist are documented in:
+
+- `plans/10-agent-rollout-hardening.md`
+
 ## Usage Examples
 
 ```csharp
