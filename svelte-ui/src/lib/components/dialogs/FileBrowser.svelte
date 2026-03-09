@@ -80,9 +80,6 @@
         return '/' + inputPath;
     }
 
-    // Display path for the input field
-    const displayPath = $derived(toDisplayPath(currentPath));
-
     // Breadcrumb parts for navigation (uses display paths)
     const pathParts = $derived.by(() => {
         if (!currentPath) return [];
@@ -101,7 +98,7 @@
                 result.push({
                     name: part,
                     path: accumulated,
-                    displayPath: toDisplayPath(accumulated)
+                    displayPath: toDisplayPath(accumulated),
                 });
             }
             return result;
@@ -298,7 +295,7 @@
             <button
                 class="nav-btn"
                 onclick={navigateUp}
-                disabled={currentPath === '/' || (basePath && currentPath === basePath)}
+                disabled={currentPath === '/' || Boolean(basePath && currentPath === basePath)}
             >
                 <svg viewBox="0 0 16 16" fill="currentColor">
                     <path d="M8 2l-6 6h4v6h4V8h4L8 2z"/>

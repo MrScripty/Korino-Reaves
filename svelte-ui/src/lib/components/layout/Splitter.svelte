@@ -28,8 +28,6 @@
         orientation = 'horizontal',
         minBefore = LAYOUT.PANEL_MIN_WIDTH,
         maxBefore = LAYOUT.PANEL_MAX_WIDTH,
-        minAfter = LAYOUT.PANEL_MIN_WIDTH,
-        maxAfter = Infinity,
         position = $bindable(LAYOUT.PANEL_DEFAULT_WIDTH),
         onPositionChange,
     }: Props = $props();

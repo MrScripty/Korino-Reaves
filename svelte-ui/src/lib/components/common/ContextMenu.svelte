@@ -70,6 +70,14 @@
             .map((item, index) => ({ item, index }))
             .filter(({ item }) => !item.separator && !item.disabled);
 
+        if (selectableItems.length === 0) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+            }
+            return;
+        }
+
         if (event.key === 'Escape') {
             event.preventDefault();
             onClose();
@@ -77,12 +85,18 @@
             event.preventDefault();
             const currentIdx = selectableItems.findIndex(({ index }) => index === focusedIndex);
             const nextIdx = (currentIdx + 1) % selectableItems.length;
-            focusedIndex = selectableItems[nextIdx].index;
+            const nextItem = selectableItems[nextIdx];
+            if (nextItem) {
+                focusedIndex = nextItem.index;
+            }
         } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             const currentIdx = selectableItems.findIndex(({ index }) => index === focusedIndex);
             const prevIdx = currentIdx <= 0 ? selectableItems.length - 1 : currentIdx - 1;
-            focusedIndex = selectableItems[prevIdx].index;
+            const previousItem = selectableItems[prevIdx];
+            if (previousItem) {
+                focusedIndex = previousItem.index;
+            }
         } else if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             const item = items[focusedIndex];

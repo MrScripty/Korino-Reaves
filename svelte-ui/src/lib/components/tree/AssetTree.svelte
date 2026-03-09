@@ -186,7 +186,10 @@
         }
 
         if (newIndex !== currentIndex) {
-            tree.selectNode(flattenedNodes[newIndex].node.id);
+            const nextNode = flattenedNodes[newIndex];
+            if (!nextNode) return;
+
+            tree.selectNode(nextNode.node.id);
             // Scroll into view if needed
             ensureVisible(newIndex);
         }

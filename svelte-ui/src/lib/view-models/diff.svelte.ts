@@ -13,7 +13,17 @@ import type {
     ThreeWayDiffResult,
     DiffChange,
     DiffConflict,
+    DiffSummary,
 } from '$lib/bridge/types';
+
+type ThreeWaySummary = {
+    game: DiffSummary;
+    mod: DiffSummary;
+    conflicts: number;
+    safeToApply: number;
+};
+
+type TwoWaySummary = DiffSummary & { total: number };
 
 class DiffVM {
     diffResult = $state<DiffResult | null>(null);
@@ -51,24 +61,32 @@ class DiffVM {
         return this.threeWayResult?.safeToApply ?? [];
     }
 
-    get summary() {
-        if (this.threeWayResult) {
-            const gameSum = summarizeChanges(this.threeWayResult.gameChanges);
-            const modSum = summarizeChanges(this.threeWayResult.modChanges);
-            return {
-                game: gameSum,
-                mod: modSum,
-                conflicts: this.threeWayResult.conflicts.length,
-                safeToApply: this.threeWayResult.safeToApply.length,
-            };
+    get threeWaySummary(): ThreeWaySummary | null {
+        if (!this.threeWayResult) {
+            return null;
         }
-        if (this.diffResult) {
-            return {
-                ...this.diffResult.summary,
-                total: this.diffResult.changes.length,
-            };
+
+        return {
+            game: summarizeChanges(this.threeWayResult.gameChanges),
+            mod: summarizeChanges(this.threeWayResult.modChanges),
+            conflicts: this.threeWayResult.conflicts.length,
+            safeToApply: this.threeWayResult.safeToApply.length,
+        };
+    }
+
+    get twoWaySummary(): TwoWaySummary | null {
+        if (!this.diffResult) {
+            return null;
         }
-        return null;
+
+        return {
+            ...this.diffResult.summary,
+            total: this.diffResult.changes.length,
+        };
+    }
+
+    get summary(): ThreeWaySummary | TwoWaySummary | null {
+        return this.threeWaySummary ?? this.twoWaySummary;
     }
 
     compareAssets(basePath: string, targetPath: string): void {
@@ -205,12 +223,14 @@ function summarizeChanges(changes: DiffChange[]): {
     added: number;
     removed: number;
     modified: number;
+    unchanged: number;
     renamed: number;
 } {
     return {
         added: changes.filter((c) => c.changeType === 'added').length,
         removed: changes.filter((c) => c.changeType === 'removed').length,
         modified: changes.filter((c) => c.changeType === 'modified').length,
+        unchanged: 0,
         renamed: changes.filter((c) => c.changeType === 'renamed').length,
     };
 }

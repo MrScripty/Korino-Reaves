@@ -6,6 +6,8 @@
     (Front, Back, Left, Right, Top, Bottom).
 -->
 <script lang="ts">
+    type Vec3 = readonly [number, number, number];
+
     interface Props {
         yaw: number;
         pitch: number;
@@ -24,7 +26,7 @@
         { name: 'Z', color: '#3b82f6', dir: [0, 0, 1], posYaw: 0, posPitch: 0, negYaw: 180, negPitch: 0 },
     ] as const;
 
-    function cross(a: number[], b: number[]): number[] {
+    function cross(a: Vec3, b: Vec3): Vec3 {
         return [
             a[1] * b[2] - a[2] * b[1],
             a[2] * b[0] - a[0] * b[2],
@@ -32,11 +34,11 @@
         ];
     }
 
-    function dot(a: number[], b: number[] | readonly number[]): number {
+    function dot(a: Vec3, b: Vec3): number {
         return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     }
 
-    function normalize(v: number[]): number[] {
+    function normalize(v: Vec3): Vec3 {
         const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
         if (len < 1e-10) return [0, 0, 1];
         return [v[0] / len, v[1] / len, v[2] / len];
@@ -48,7 +50,7 @@
         const p = pitch * DEG2RAD;
 
         // Camera forward (from camera toward target)
-        const fwd = [
+        const fwd: Vec3 = [
             -Math.cos(p) * Math.sin(y),
             Math.sin(p),
             -Math.cos(p) * Math.cos(y),

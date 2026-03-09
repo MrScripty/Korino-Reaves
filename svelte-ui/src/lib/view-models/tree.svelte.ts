@@ -347,10 +347,19 @@ function filterTree(nodeList: TreeNode[], query: string): TreeNode[] {
             : [];
 
         if (nameMatches || filteredChildren.length > 0) {
-            result.push({
-                ...node,
-                children: filteredChildren.length > 0 ? filteredChildren : node.children ? [] : undefined,
-            });
+            if (filteredChildren.length > 0) {
+                result.push({
+                    ...node,
+                    children: filteredChildren,
+                });
+            } else if (node.children) {
+                result.push({
+                    ...node,
+                    children: [],
+                });
+            } else {
+                result.push(node);
+            }
         }
     }
 

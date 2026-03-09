@@ -7,7 +7,6 @@
 
 import type { DockLayoutConfig, PanelId, ZoneId, ZoneConfig } from '$lib/components/dock/dockTypes';
 import { DEFAULT_LAYOUT, DROPPABLE_ZONES } from '$lib/components/dock/dockTypes';
-import { PANEL_DEFINITIONS } from '$lib/components/dock/panelRegistry';
 import { DOCK } from '$lib/constants';
 
 class DockLayoutVM {

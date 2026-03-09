@@ -89,8 +89,9 @@ ipc.onAction<AssetTablesPayload>('dependency', 'assetTables', (payload) => {
         dataTable.isLoading = false;
         // Auto-select first available tab if current tab has no data
         const available = dataTable.availableTabs;
-        if (available.length > 0 && !available.find((t) => t.id === dataTable.activeTab)) {
-            dataTable.activeTab = available[0].id;
+        const nextTab = available[0];
+        if (nextTab && !available.find((t) => t.id === dataTable.activeTab)) {
+            dataTable.activeTab = nextTab.id;
         }
     }
 });

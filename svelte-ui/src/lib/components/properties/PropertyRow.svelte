@@ -113,8 +113,8 @@
             {:else if property.type === 'number'}
                 <NumberEditor
                     value={property.value as number}
-                    min={property.metadata?.min}
-                    max={property.metadata?.max}
+                    {...(property.metadata?.min !== undefined ? { min: property.metadata.min } : {})}
+                    {...(property.metadata?.max !== undefined ? { max: property.metadata.max } : {})}
                     onSubmit={handleValueChange}
                     onCancel={handleCancel}
                 />
@@ -208,8 +208,8 @@
             }
             // Handle struct summary {type, propertyCount} (camelCase from C# serialization)
             if ('type' in obj && 'propertyCount' in obj) {
-                const count = obj.propertyCount as number;
-                return `type: ${obj.type}, propertyCount: ${count}`;
+                const count = obj['propertyCount'] as number;
+                return `type: ${obj['type']}, propertyCount: ${count}`;
             }
             // Generic small object: show key-value pairs
             if (keys.length > 0 && keys.length <= 4) {

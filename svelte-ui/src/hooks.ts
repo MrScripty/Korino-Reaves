@@ -6,4 +6,6 @@ export const reroute: Reroute = ({ url }) => {
 	if (url.pathname.endsWith('/index.html')) {
 		return '/';
 	}
+
+	return url.pathname;
 };

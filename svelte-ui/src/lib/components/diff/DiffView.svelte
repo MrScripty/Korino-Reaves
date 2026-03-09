@@ -7,7 +7,6 @@
 <script lang="ts">
     import type { DiffChange, DiffChangeType } from '$lib/bridge/types';
     import { diff } from '$lib/view-models/diff.svelte';
-    import DiffTree from './DiffTree.svelte';
     import DiffHighlight from './DiffHighlight.svelte';
     import ConflictPanel from './ConflictPanel.svelte';
 
@@ -101,28 +100,28 @@
                     {#if diff.isThreeWayDiff}
                         <div class="summary-section">
                             <span class="summary-label">Game Changes:</span>
-                            <span class="stat added">+{diff.summary.game?.added ?? 0}</span>
-                            <span class="stat removed">-{diff.summary.game?.removed ?? 0}</span>
-                            <span class="stat modified">~{diff.summary.game?.modified ?? 0}</span>
+                            <span class="stat added">+{diff.threeWaySummary?.game.added ?? 0}</span>
+                            <span class="stat removed">-{diff.threeWaySummary?.game.removed ?? 0}</span>
+                            <span class="stat modified">~{diff.threeWaySummary?.game.modified ?? 0}</span>
                         </div>
                         <div class="summary-section">
                             <span class="summary-label">Mod Changes:</span>
-                            <span class="stat added">+{diff.summary.mod?.added ?? 0}</span>
-                            <span class="stat removed">-{diff.summary.mod?.removed ?? 0}</span>
-                            <span class="stat modified">~{diff.summary.mod?.modified ?? 0}</span>
+                            <span class="stat added">+{diff.threeWaySummary?.mod.added ?? 0}</span>
+                            <span class="stat removed">-{diff.threeWaySummary?.mod.removed ?? 0}</span>
+                            <span class="stat modified">~{diff.threeWaySummary?.mod.modified ?? 0}</span>
                         </div>
                         <div class="summary-section">
                             <span class="summary-label">Conflicts:</span>
-                            <span class="stat conflict">{diff.summary.conflicts ?? 0}</span>
+                            <span class="stat conflict">{diff.threeWaySummary?.conflicts ?? 0}</span>
                             <span class="summary-label">Safe:</span>
-                            <span class="stat safe">{diff.summary.safeToApply ?? 0}</span>
+                            <span class="stat safe">{diff.threeWaySummary?.safeToApply ?? 0}</span>
                         </div>
                     {:else}
-                        <span class="stat added">+{diff.summary.added ?? 0} added</span>
-                        <span class="stat removed">-{diff.summary.removed ?? 0} removed</span>
-                        <span class="stat modified">~{diff.summary.modified ?? 0} modified</span>
-                        {#if diff.summary.renamed}
-                            <span class="stat renamed">{diff.summary.renamed} renamed</span>
+                        <span class="stat added">+{diff.twoWaySummary?.added ?? 0} added</span>
+                        <span class="stat removed">-{diff.twoWaySummary?.removed ?? 0} removed</span>
+                        <span class="stat modified">~{diff.twoWaySummary?.modified ?? 0} modified</span>
+                        {#if diff.twoWaySummary?.renamed}
+                            <span class="stat renamed">{diff.twoWaySummary.renamed} renamed</span>
                         {/if}
                     {/if}
                 </div>

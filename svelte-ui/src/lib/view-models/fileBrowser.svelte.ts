@@ -145,13 +145,18 @@ class FileBrowserVM {
      * Open a save dialog for exporting.
      */
     openExportDialog(onSelect: (path: string) => void, initialPath?: string) {
-        this.open({
+        const config: FileBrowserConfig = {
             title: 'Export as JSON',
             mode: 'file',
             filters: ['*.json'],
-            initialPath,
             onSelect,
-        });
+        };
+
+        if (initialPath !== undefined) {
+            config.initialPath = initialPath;
+        }
+
+        this.open(config);
     }
 }
 

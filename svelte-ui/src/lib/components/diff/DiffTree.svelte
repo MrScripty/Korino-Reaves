@@ -5,9 +5,10 @@
     Used in side-by-side diff view to show structure with change indicators.
 -->
 <script lang="ts">
-    import type { TreeNode, DiffChange, DiffChangeType } from '$lib/bridge/types';
-    import { TREE, TREE_NODE_TYPE_COLORS } from '$lib/constants';
+    import type { TreeNode, DiffChange } from '$lib/bridge/types';
+    import { TREE_NODE_TYPE_COLORS } from '$lib/constants';
     import { getChangeColor } from '$lib/view-models/diff.svelte';
+    import Self from './DiffTree.svelte';
 
     interface Props {
         /** Tree nodes to display */
@@ -152,14 +153,14 @@
         <!-- Children (if expanded) -->
         {#if isExpanded && node.children}
             <div class="tree-children">
-                <svelte:self
+                <Self
                     nodes={node.children}
                     {changes}
                     {selectedId}
-                    {onSelect}
-                    {onToggle}
                     {expandedIds}
                     {side}
+                    {...(onSelect ? { onSelect } : {})}
+                    {...(onToggle ? { onToggle } : {})}
                 />
             </div>
         {/if}

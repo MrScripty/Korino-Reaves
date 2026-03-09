@@ -14,7 +14,7 @@ export type RenderMode = 'shaded' | 'shadeless' | 'wireframe';
 
 class ViewportVM {
     previewData = $state<string | null>(null);
-    mode = $state<'2d' | '3d' | 'none'>('none');
+    mode = $state<'2d' | '3d' | 'scene' | 'none'>('none');
     contentType = $state<string | null>(null);
     isLoading = $state(false);
     assetName = $state<string | null>(null);

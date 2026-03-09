@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
     import { ipc } from '$lib/bridge/ipc';
+    import type { IpcMessage, MessageType } from '$lib/bridge/types';
     import { asset } from '$lib/view-models/asset.svelte';
     import { project } from '$lib/view-models/project.svelte';
     import { pak } from '$lib/view-models/pak.svelte';
@@ -18,7 +19,7 @@
     interface MenuItem {
         label: string;
         action?: string;
-        type?: string; // IPC message type or 'svelte' for Svelte dialogs
+        type?: MessageType | 'svelte'; // IPC message type or 'svelte' for Svelte dialogs
         shortcut?: string;
         disabled?: boolean;
         separator?: boolean;
@@ -102,8 +103,8 @@
 
         // Handle IPC-based actions
         if (item.action) {
-            const message = {
-                type: item.type ?? 'asset',
+            const message: Omit<IpcMessage, 'timestamp'> = {
+                type: (item.type ?? 'asset') as MessageType,
                 action: item.action,
                 payload: {},
             };
@@ -164,12 +165,12 @@
             case 'exportJson':
                 fileBrowser.openExportDialog((path) => {
                     console.log('[MenuBar] Export path:', path);
-                    ipc.send({
-                        type: 'asset',
-                        action: 'export',
-                        payload: { filePath: path },
+                        ipc.send({
+                            type: 'asset',
+                            action: 'exportJson',
+                            payload: { filePath: path },
+                        });
                     });
-                });
                 break;
 
             case 'resetLayout':

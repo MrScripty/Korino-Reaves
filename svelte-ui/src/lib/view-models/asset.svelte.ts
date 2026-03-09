@@ -8,7 +8,7 @@
  */
 
 import { ipc } from '$lib/bridge/ipc';
-import type { AssetInfo, OpenAssetRequest, IpcMessage } from '$lib/bridge/types';
+import type { AssetInfo, OpenAssetRequest } from '$lib/bridge/types';
 
 class AssetVM {
     assetInfo = $state<AssetInfo | null>(null);

@@ -5,7 +5,7 @@
     All interactions are forwarded to C# via the tree view model.
 -->
 <script lang="ts">
-    import type { TreeNode as TreeNodeType, TreeNodeType as NodeType } from '$lib/bridge/types';
+    import type { TreeNode as TreeNodeType } from '$lib/bridge/types';
     import { TREE, TREE_NODE_TYPE_COLORS } from '$lib/constants';
     import { tree } from '$lib/view-models/tree.svelte';
 

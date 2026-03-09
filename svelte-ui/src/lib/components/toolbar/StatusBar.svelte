@@ -24,7 +24,7 @@
 <div class="status-bar">
     <!-- Left side: Asset info -->
     <div class="status-left">
-        {#if pak.isExtracting}
+        {#if pak.isImporting}
             <div class="status-item extracting">
                 <div class="loading-spinner small"></div>
                 <span>Extracting: {pak.currentFile} / {pak.totalFiles}</span>

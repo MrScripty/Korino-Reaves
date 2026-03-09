@@ -63,7 +63,10 @@
                     : (newIndex < tabs.length - 1 ? newIndex + 1 : 0);
                 if (newIndex === currentIndex) break; // All tabs disabled
             }
-            selectTab(tabs[newIndex].id);
+            const nextTab = tabs[newIndex];
+            if (nextTab) {
+                selectTab(nextTab.id);
+            }
         }
     }
 </script>

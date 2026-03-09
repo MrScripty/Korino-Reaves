@@ -171,6 +171,8 @@ export const TREE_NODE_TYPE_COLORS: Record<TreeNodeType, string> = {
     import: 'var(--color-number)',
     name: 'var(--color-string)',
     header: 'var(--text-secondary)',
+    folder: 'var(--color-number)',
+    file: 'var(--text-primary)',
     unknown: 'var(--color-unknown)',
 };
 

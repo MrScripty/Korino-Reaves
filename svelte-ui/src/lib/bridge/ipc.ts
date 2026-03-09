@@ -72,7 +72,7 @@ class IpcBridge {
         const self = this;
 
         // Define the receiver on window
-        (window as Record<string, unknown>)[IPC_RECEIVER] = function (
+        ((window as unknown) as Record<string, unknown>)[IPC_RECEIVER] = function (
             json: string
         ): void {
             self.receive(json);

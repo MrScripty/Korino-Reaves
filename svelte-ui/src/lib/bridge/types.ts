@@ -528,9 +528,9 @@ export type ViewportCommand =
  */
 export interface ViewportState {
     /** Current preview mode */
-    mode: '2d' | '3d' | 'none';
+    mode: '2d' | '3d' | 'scene' | 'none';
     /** Type of content being previewed */
-    contentType?: 'texture' | 'mesh' | 'skeleton' | 'animation';
+    contentType?: 'texture' | 'mesh' | 'skeleton' | 'animation' | 'level';
     /** Whether grid is visible */
     gridVisible: boolean;
     /** Whether wireframe mode is active */
