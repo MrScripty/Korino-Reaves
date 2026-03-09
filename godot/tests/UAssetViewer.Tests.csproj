@@ -29,6 +29,9 @@
   <ItemGroup>
     <Compile Include="../scripts/Models/**/*.cs" />
     <Compile Include="../scripts/Infrastructure/IAppLogger.cs" />
+    <Compile Include="../scripts/Infrastructure/InputValidator.cs" />
+    <Compile Include="../scripts/Infrastructure/PathValidator.cs" />
+    <Compile Include="../scripts/Infrastructure/IpcMessageValidator.cs" />
     <Compile Include="../scripts/Bridge/IpcDispatcher.cs" />
     <Compile Include="../scripts/Bridge/Handlers/IMessageHandler.cs" />
     <Compile Include="../scripts/Bridge/Handlers/TestHandler.cs" />

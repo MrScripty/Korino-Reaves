@@ -233,24 +233,15 @@ public sealed class IpcDispatcher : IDisposable
     {
         _logger.Info("[IpcDispatcher] Received raw IPC message: {Json}", json.Length > 200 ? json.Substring(0, 200) + "..." : json);
 
-        try
+        if (!IpcMessageValidator.TryParseIncomingMessage(json, out var message, out var error))
         {
-            var message = JsonSerializer.Deserialize<IpcMessage>(json);
-            if (message != null)
-            {
-                _logger.Info("[IpcDispatcher] Parsed message: type={Type}, action={Action}", message.Type, message.Action);
-                // Fire and forget - dispatch asynchronously
-                _ = DispatchAsync(message);
-            }
-            else
-            {
-                _logger.Warning("Failed to deserialize IPC message: null result");
-            }
+            _logger.Warning("Rejected IPC message: {Error}", error);
+            return;
         }
-        catch (JsonException ex)
-        {
-            _logger.Error(ex, "Failed to parse IPC message JSON: {Json}", json);
-        }
+
+        _logger.Info("[IpcDispatcher] Parsed message: type={Type}, action={Action}", message!.Type, message.Action);
+        // Fire and forget - dispatch asynchronously
+        _ = DispatchAsync(message);
     }
 
     public void Dispose()

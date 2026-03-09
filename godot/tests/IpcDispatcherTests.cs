@@ -69,7 +69,7 @@ public class IpcDispatcherTests : IDisposable
 
         // Assert
         _logger.Entries.Should().Contain(e =>
-            e.Level == Infrastructure.LogLevel.Warning &&
+            e.Level == UAssetViewer.Infrastructure.LogLevel.Warning &&
             e.Message.Contains("No handler registered for message type")
         );
     }
@@ -86,7 +86,7 @@ public class IpcDispatcherTests : IDisposable
 
         // Assert
         _logger.Entries.Should().Contain(e =>
-            e.Level == Infrastructure.LogLevel.Info &&
+            e.Level == UAssetViewer.Infrastructure.LogLevel.Info &&
             e.Message.Contains("ping")
         );
     }

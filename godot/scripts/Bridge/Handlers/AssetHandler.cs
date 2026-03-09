@@ -4,7 +4,7 @@
 // Provides open, save, close, and info operations for .uasset files.
 
 using System;
-using System.Text.Json;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UAssetViewer.Assets;
 using UAssetViewer.Infrastructure;
@@ -20,6 +20,7 @@ public sealed class AssetHandler : IMessageHandler
 {
     private readonly IAppLogger _logger;
     private readonly AssetManager _assetManager;
+    private readonly IReadOnlyList<string> _allowedRoots;
 
     public string MessageType => MessageTypes.Asset;
 
@@ -27,6 +28,7 @@ public sealed class AssetHandler : IMessageHandler
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _assetManager = assetManager ?? throw new ArgumentNullException(nameof(assetManager));
+        _allowedRoots = PathValidator.GetDefaultFilesystemRoots();
     }
 
     public bool CanHandle(string action)
@@ -56,15 +58,26 @@ public sealed class AssetHandler : IMessageHandler
 
         try
         {
-            // Parse the request
-            var request = ParsePayload<OpenAssetRequest>(message.Payload);
-            if (request == null || string.IsNullOrEmpty(request.FilePath))
+            if (!InputValidator.TryDeserializePayload<OpenAssetRequest>(message.Payload, out var parsedRequest, out var payloadError))
             {
-                return CreateErrorResponse(message, "Invalid open request: missing filePath");
+                return CreateErrorResponse(message, payloadError, ErrorCodes.InvalidRequest);
             }
 
-            // Load the asset
-            var assetInfo = await _assetManager.LoadAsync(request.FilePath);
+            var request = parsedRequest!;
+
+            if (!PathValidator.TryResolveWithinRoots(
+                    request.FilePath,
+                    _allowedRoots,
+                    out var validatedPath,
+                    out var pathError,
+                    requireExists: true,
+                    allowFiles: true,
+                    allowDirectories: false))
+            {
+                return CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest);
+            }
+
+            var assetInfo = await _assetManager.LoadAsync(validatedPath);
 
             return new IpcMessage(
                 MessageTypes.Asset,
@@ -120,10 +133,9 @@ public sealed class AssetHandler : IMessageHandler
 
         try
         {
-            var path = ParsePayloadString(message.Payload, "filePath");
-            if (string.IsNullOrEmpty(path))
+            if (!InputValidator.TryGetRequiredString(message.Payload, "filePath", out var path, out var payloadError))
             {
-                return CreateErrorResponse(message, "Invalid saveAs request: missing filePath");
+                return CreateErrorResponse(message, payloadError, ErrorCodes.InvalidRequest);
             }
 
             if (!_assetManager.IsLoaded)
@@ -131,12 +143,24 @@ public sealed class AssetHandler : IMessageHandler
                 return CreateErrorResponse(message, "No asset is currently loaded");
             }
 
-            await _assetManager.SaveAsAsync(path);
+            if (!PathValidator.TryResolveWithinRoots(
+                    path,
+                    _allowedRoots,
+                    out var validatedPath,
+                    out var pathError,
+                    requireExists: false,
+                    allowFiles: true,
+                    allowDirectories: false))
+            {
+                return CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest);
+            }
+
+            await _assetManager.SaveAsAsync(validatedPath);
 
             return new IpcMessage(
                 MessageTypes.Asset,
                 "saved",
-                new { success = true, filePath = path },
+                new { success = true, filePath = validatedPath },
                 message.Id,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
@@ -188,10 +212,9 @@ public sealed class AssetHandler : IMessageHandler
 
         try
         {
-            var path = ParsePayloadString(message.Payload, "filePath");
-            if (string.IsNullOrEmpty(path))
+            if (!InputValidator.TryGetRequiredString(message.Payload, "filePath", out var path, out var payloadError))
             {
-                return CreateErrorResponse(message, "Invalid exportJson request: missing filePath");
+                return CreateErrorResponse(message, payloadError, ErrorCodes.InvalidRequest);
             }
 
             if (!_assetManager.IsLoaded)
@@ -199,12 +222,24 @@ public sealed class AssetHandler : IMessageHandler
                 return CreateErrorResponse(message, "No asset is currently loaded");
             }
 
-            await _assetManager.ExportJsonAsync(path);
+            if (!PathValidator.TryResolveWithinRoots(
+                    path,
+                    _allowedRoots,
+                    out var validatedPath,
+                    out var pathError,
+                    requireExists: false,
+                    allowFiles: true,
+                    allowDirectories: false))
+            {
+                return CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest);
+            }
+
+            await _assetManager.ExportJsonAsync(validatedPath);
 
             return new IpcMessage(
                 MessageTypes.Asset,
                 "exported",
-                new { success = true, filePath = path },
+                new { success = true, filePath = validatedPath },
                 message.Id,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
@@ -216,41 +251,15 @@ public sealed class AssetHandler : IMessageHandler
         }
     }
 
-    private static T? ParsePayload<T>(object? payload) where T : class
-    {
-        if (payload == null)
-        {
-            return null;
-        }
-
-        if (payload is T typed)
-        {
-            return typed;
-        }
-
-        if (payload is JsonElement element)
-        {
-            return JsonSerializer.Deserialize<T>(element.GetRawText());
-        }
-
-        return null;
-    }
-
-    private static string? ParsePayloadString(object? payload, string propertyName)
-    {
-        if (payload is JsonElement element && element.TryGetProperty(propertyName, out var prop))
-        {
-            return prop.GetString();
-        }
-        return null;
-    }
-
-    private static IpcMessage CreateErrorResponse(IpcMessage request, string errorMessage)
+    private static IpcMessage CreateErrorResponse(
+        IpcMessage request,
+        string errorMessage,
+        string code = ErrorCodes.InternalError)
     {
         return new IpcMessage(
             MessageTypes.Error,
             "error",
-            new ErrorResponse(ErrorCodes.InternalError, errorMessage, request.Id),
+            new ErrorResponse(code, errorMessage, request.Id),
             request.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         );

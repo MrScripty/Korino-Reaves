@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
 using UAssetViewer.Infrastructure;
@@ -22,12 +21,14 @@ namespace UAssetViewer.Bridge.Handlers;
 public sealed class FilesystemHandler : IMessageHandler
 {
     private readonly IAppLogger _logger;
+    private readonly IReadOnlyList<string> _allowedRoots;
 
-    public string MessageType => "fs";
+    public string MessageType => MessageTypes.Filesystem;
 
     public FilesystemHandler(IAppLogger logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _allowedRoots = PathValidator.GetDefaultFilesystemRoots(GetProjectsDirectoryPath());
     }
 
     public bool CanHandle(string action)
@@ -54,31 +55,34 @@ public sealed class FilesystemHandler : IMessageHandler
     {
         try
         {
-            var payload = JsonSerializer.Deserialize<ListRequest>(
-                JsonSerializer.Serialize(message.Payload),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var payload = message.Payload == null
+                ? new ListRequest(null)
+                : InputValidator.TryDeserializePayload<ListRequest>(message.Payload, out var parsedPayload, out var payloadError)
+                    ? parsedPayload
+                    : throw new InvalidOperationException(payloadError);
 
             var path = payload?.Path ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
 
-            _logger.Info("[FilesystemHandler] Listing directory: {Path}", path);
-
-            if (!Directory.Exists(path))
+            if (!PathValidator.TryResolveWithinRoots(
+                    path,
+                    _allowedRoots,
+                    out var validatedPath,
+                    out var pathError,
+                    requireExists: true,
+                    allowFiles: false,
+                    allowDirectories: true))
             {
-                return Task.FromResult<IpcMessage?>(new IpcMessage(
-                    "error",
-                    "fs_error",
-                    new { message = $"Directory not found: {path}" },
-                    message.Id,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                ));
+                return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest));
             }
+
+            _logger.Info("[FilesystemHandler] Listing directory: {Path}", validatedPath);
 
             var entries = new List<FileEntry>();
 
             // Add directories first
             try
             {
-                foreach (var dir in Directory.GetDirectories(path))
+                foreach (var dir in Directory.GetDirectories(validatedPath))
                 {
                     var info = new DirectoryInfo(dir);
                     // Skip hidden directories on Linux (starting with .)
@@ -101,7 +105,7 @@ public sealed class FilesystemHandler : IMessageHandler
             // Add files
             try
             {
-                foreach (var file in Directory.GetFiles(path))
+                foreach (var file in Directory.GetFiles(validatedPath))
                 {
                     var info = new FileInfo(file);
                     // Skip hidden files on Linux (starting with .)
@@ -129,9 +133,9 @@ public sealed class FilesystemHandler : IMessageHandler
                 .ToList();
 
             var response = new IpcMessage(
-                "fs",
+                MessageTypes.Filesystem,
                 "listResult",
-                new { entries, path = Path.GetFullPath(path) },
+                new { entries, path = validatedPath },
                 message.Id,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
@@ -141,13 +145,7 @@ public sealed class FilesystemHandler : IMessageHandler
         catch (Exception ex)
         {
             _logger.Error(ex, "[FilesystemHandler] Error listing directory");
-            return Task.FromResult<IpcMessage?>(new IpcMessage(
-                "error",
-                "fs_error",
-                new { message = ex.Message },
-                message.Id,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            ));
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, ex.Message));
         }
     }
 
@@ -158,7 +156,7 @@ public sealed class FilesystemHandler : IMessageHandler
         _logger.Info("[FilesystemHandler] Home directory: {Path}", homePath);
 
         var response = new IpcMessage(
-            "fs",
+            MessageTypes.Filesystem,
             "homeResult",
             new { path = homePath },
             message.Id,
@@ -172,17 +170,30 @@ public sealed class FilesystemHandler : IMessageHandler
     {
         try
         {
-            var payload = JsonSerializer.Deserialize<PathRequest>(
-                JsonSerializer.Serialize(message.Payload));
+            if (!InputValidator.TryDeserializePayload<PathRequest>(message.Payload, out var parsedPayload, out var payloadError))
+            {
+                return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, payloadError, ErrorCodes.InvalidRequest));
+            }
 
-            var path = payload?.Path ?? "";
-            var exists = File.Exists(path) || Directory.Exists(path);
-            var isDirectory = Directory.Exists(path);
+            var payload = parsedPayload!;
+
+            if (!PathValidator.TryResolveWithinRoots(
+                    payload.Path,
+                    _allowedRoots,
+                    out var validatedPath,
+                    out var pathError,
+                    requireExists: false))
+            {
+                return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest));
+            }
+
+            var exists = File.Exists(validatedPath) || Directory.Exists(validatedPath);
+            var isDirectory = Directory.Exists(validatedPath);
 
             var response = new IpcMessage(
-                "fs",
+                MessageTypes.Filesystem,
                 "existsResult",
-                new { path, exists, isDirectory },
+                new { path = validatedPath, exists, isDirectory },
                 message.Id,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
@@ -192,13 +203,7 @@ public sealed class FilesystemHandler : IMessageHandler
         catch (Exception ex)
         {
             _logger.Error(ex, "[FilesystemHandler] Error checking existence");
-            return Task.FromResult<IpcMessage?>(new IpcMessage(
-                "error",
-                "fs_error",
-                new { message = ex.Message },
-                message.Id,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            ));
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, ex.Message));
         }
     }
 
@@ -206,16 +211,28 @@ public sealed class FilesystemHandler : IMessageHandler
     {
         try
         {
-            var payload = JsonSerializer.Deserialize<PathRequest>(
-                JsonSerializer.Serialize(message.Payload));
-
-            var path = payload?.Path ?? "";
-
-            if (Directory.Exists(path))
+            if (!InputValidator.TryDeserializePayload<PathRequest>(message.Payload, out var parsedPayload, out var payloadError))
             {
-                var info = new DirectoryInfo(path);
+                return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, payloadError, ErrorCodes.InvalidRequest));
+            }
+
+            var payload = parsedPayload!;
+
+            if (!PathValidator.TryResolveWithinRoots(
+                    payload.Path,
+                    _allowedRoots,
+                    out var validatedPath,
+                    out var pathError,
+                    requireExists: true))
+            {
+                return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest));
+            }
+
+            if (Directory.Exists(validatedPath))
+            {
+                var info = new DirectoryInfo(validatedPath);
                 var response = new IpcMessage(
-                    "fs",
+                    MessageTypes.Filesystem,
                     "infoResult",
                     new FileEntry
                     {
@@ -229,11 +246,11 @@ public sealed class FilesystemHandler : IMessageHandler
                 );
                 return Task.FromResult<IpcMessage?>(response);
             }
-            else if (File.Exists(path))
+            else if (File.Exists(validatedPath))
             {
-                var info = new FileInfo(path);
+                var info = new FileInfo(validatedPath);
                 var response = new IpcMessage(
-                    "fs",
+                    MessageTypes.Filesystem,
                     "infoResult",
                     new FileEntry
                     {
@@ -250,25 +267,16 @@ public sealed class FilesystemHandler : IMessageHandler
             }
             else
             {
-                return Task.FromResult<IpcMessage?>(new IpcMessage(
-                    "error",
-                    "fs_error",
-                    new { message = $"Path not found: {path}" },
-                    message.Id,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                ));
+                return Task.FromResult<IpcMessage?>(CreateErrorResponse(
+                    message,
+                    $"Path not found: {validatedPath}",
+                    ErrorCodes.InvalidRequest));
             }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "[FilesystemHandler] Error getting info");
-            return Task.FromResult<IpcMessage?>(new IpcMessage(
-                "error",
-                "fs_error",
-                new { message = ex.Message },
-                message.Id,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            ));
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, ex.Message));
         }
     }
 
@@ -290,7 +298,7 @@ public sealed class FilesystemHandler : IMessageHandler
             _logger.Info("[FilesystemHandler] Projects directory: {Path}", projectsDir);
 
             var response = new IpcMessage(
-                "fs",
+                MessageTypes.Filesystem,
                 "projectsDirResult",
                 new { path = projectsDir },
                 message.Id,
@@ -302,14 +310,26 @@ public sealed class FilesystemHandler : IMessageHandler
         catch (Exception ex)
         {
             _logger.Error(ex, "[FilesystemHandler] Error getting projects directory");
-            return Task.FromResult<IpcMessage?>(new IpcMessage(
-                "error",
-                "fs_error",
-                new { message = ex.Message },
-                message.Id,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            ));
+            return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, ex.Message));
         }
+    }
+
+    private static string GetProjectsDirectoryPath()
+    {
+        var projectRoot = ProjectSettings.GlobalizePath("res://").TrimEnd('/');
+        projectRoot = Path.GetDirectoryName(projectRoot) ?? projectRoot;
+        return Path.Combine(projectRoot, "projects");
+    }
+
+    private static IpcMessage CreateErrorResponse(IpcMessage request, string errorMessage, string code = ErrorCodes.InternalError)
+    {
+        return new IpcMessage(
+            MessageTypes.Error,
+            "fs_error",
+            new ErrorResponse(code, errorMessage, request.Id),
+            request.Id,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        );
     }
 
     // Request DTOs

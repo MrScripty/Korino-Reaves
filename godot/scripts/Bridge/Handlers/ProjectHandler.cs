@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CUE4Parse.UE4.Versions;
@@ -48,6 +47,7 @@ public sealed class ProjectHandler : IMessageHandler
     private readonly IAppLogger _logger;
     private readonly FileTreeBuilder _fileTreeBuilder;
     private readonly IpcDispatcher _dispatcher;
+    private readonly string _projectsRoot;
     private ProjectInfo? _currentProject;
 
     // EGame version state
@@ -90,6 +90,7 @@ public sealed class ProjectHandler : IMessageHandler
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _fileTreeBuilder = new FileTreeBuilder(logger);
+        _projectsRoot = GetProjectsDirectoryPath();
     }
 
     public bool CanHandle(string action)
@@ -119,18 +120,23 @@ public sealed class ProjectHandler : IMessageHandler
     {
         try
         {
-            var request = ParsePayload<OpenProjectRequest>(message.Payload);
-            if (request == null || string.IsNullOrWhiteSpace(request.ProjectPath))
+            if (!InputValidator.TryDeserializePayload<OpenProjectRequest>(message.Payload, out var parsedRequest, out var payloadError))
             {
-                return CreateErrorResponse(message, "Invalid project path");
+                return CreateErrorResponse(message, payloadError, ErrorCodes.InvalidRequest);
             }
 
-            var projectPath = request.ProjectPath;
+            var request = parsedRequest!;
 
-            // Validate directory exists
-            if (!Directory.Exists(projectPath))
+            if (!PathValidator.TryResolveWithinRoot(
+                    request.ProjectPath,
+                    _projectsRoot,
+                    out var projectPath,
+                    out var pathError,
+                    requireExists: true,
+                    allowFiles: false,
+                    allowDirectories: true))
             {
-                return CreateErrorResponse(message, $"Project directory not found: {projectPath}");
+                return CreateErrorResponse(message, pathError, ErrorCodes.InvalidRequest);
             }
 
             _logger.Info("Opening project: {Path}", projectPath);
@@ -200,16 +206,11 @@ public sealed class ProjectHandler : IMessageHandler
     {
         try
         {
-            // Get projects directory
-            var projectRoot = ProjectSettings.GlobalizePath("res://").TrimEnd('/');
-            projectRoot = System.IO.Path.GetDirectoryName(projectRoot) ?? projectRoot;
-            var projectsDir = System.IO.Path.Combine(projectRoot, "projects");
-
             var projects = new List<ProjectInfo>();
 
-            if (Directory.Exists(projectsDir))
+            if (Directory.Exists(_projectsRoot))
             {
-                foreach (var dir in Directory.GetDirectories(projectsDir))
+                foreach (var dir in Directory.GetDirectories(_projectsRoot))
                 {
                     var name = System.IO.Path.GetFileName(dir);
                     var ueDataPath = System.IO.Path.Combine(dir, "UE_data");
@@ -591,6 +592,18 @@ public sealed class ProjectHandler : IMessageHandler
     /// </summary>
     public void SetGameVersionFromImport(string projectPath, string? gameVersion)
     {
+        if (!PathValidator.TryResolveWithinRoot(
+                projectPath,
+                _projectsRoot,
+                out var validatedProjectPath,
+                out _,
+                requireExists: true,
+                allowFiles: false,
+                allowDirectories: true))
+        {
+            throw new InvalidOperationException($"Project path is outside the managed projects root: {projectPath}");
+        }
+
         if (!string.IsNullOrEmpty(gameVersion) &&
             gameVersion != "AUTO" &&
             Enum.TryParse<EGame>(gameVersion, out var parsed))
@@ -604,9 +617,16 @@ public sealed class ProjectHandler : IMessageHandler
         }
 
         // Persist
-        var config = ProjectConfig.Load(projectPath);
+        var config = ProjectConfig.Load(validatedProjectPath);
         config.GameVersion = _isAutoDetect ? null : gameVersion;
-        ProjectConfig.Save(projectPath, config);
+        ProjectConfig.Save(validatedProjectPath, config);
+    }
+
+    private static string GetProjectsDirectoryPath()
+    {
+        var projectRoot = ProjectSettings.GlobalizePath("res://").TrimEnd('/');
+        projectRoot = System.IO.Path.GetDirectoryName(projectRoot) ?? projectRoot;
+        return System.IO.Path.Combine(projectRoot, "projects");
     }
 
     private static int CountFiles(string path)
@@ -621,35 +641,25 @@ public sealed class ProjectHandler : IMessageHandler
         }
     }
 
-    private static T? ParsePayload<T>(object? payload) where T : class
-    {
-        if (payload == null) return null;
-        if (payload is T typed) return typed;
-        if (payload is JsonElement element)
-        {
-            return JsonSerializer.Deserialize<T>(element.GetRawText(), new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-        }
-        return null;
-    }
-
     private static string? ParsePayloadString(object? payload, string propertyName)
     {
-        if (payload is JsonElement element && element.TryGetProperty(propertyName, out var prop))
+        if (InputValidator.TryGetRequiredString(payload, propertyName, out var value, out _))
         {
-            return prop.GetString();
+            return value;
         }
+
         return null;
     }
 
-    private static IpcMessage CreateErrorResponse(IpcMessage request, string errorMessage)
+    private static IpcMessage CreateErrorResponse(
+        IpcMessage request,
+        string errorMessage,
+        string code = ErrorCodes.InternalError)
     {
         return new IpcMessage(
             MessageTypes.Error,
             "error",
-            new ErrorResponse(ErrorCodes.InternalError, errorMessage, request.Id),
+            new ErrorResponse(code, errorMessage, request.Id),
             request.Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         );

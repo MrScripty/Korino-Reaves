@@ -1,5 +1,6 @@
 namespace UAssetViewer.Models;
 
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 /// <summary>
@@ -18,12 +19,39 @@ public static class MessageTypes
     public const string Dialog = "dialog";
     public const string Pak = "pak";
     public const string Project = "project";
+    public const string Filesystem = "fs";
     public const string Error = "error";
     public const string Scene = "scene";
     public const string Log = "log";
     public const string Dependency = "dependency";
     public const string Import = "import";
     public const string Test = "test";
+
+    private static readonly HashSet<string> KnownTypes = new()
+    {
+        Asset,
+        Tree,
+        Property,
+        Selection,
+        Diff,
+        Viewport,
+        Agent,
+        Dialog,
+        Pak,
+        Project,
+        Filesystem,
+        Error,
+        Scene,
+        Log,
+        Dependency,
+        Import,
+        Test,
+    };
+
+    public static bool IsKnown(string type)
+    {
+        return KnownTypes.Contains(type);
+    }
 }
 
 /// <summary>
