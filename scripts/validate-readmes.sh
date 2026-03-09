@@ -1,134 +1,91 @@
-#!/bin/bash
-# validate-readmes.sh
-# Validates that all significant directories have README.md files.
-# Used by lefthook pre-commit hooks.
-#
-# Usage: ./scripts/validate-readmes.sh
-#
-# Exit codes:
-#   0 - All directories have README files
-#   1 - Missing README files detected
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Project root (relative to script location)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Directories that should be excluded from README checks
-EXCLUDED_DIRS=(
-    "node_modules"
-    ".git"
-    ".godot"
-    ".svelte-kit"
-    "build"
-    "dist"
-    "bin"
-    "obj"
-    ".vs"
-    ".vscode"
-    ".idea"
-    "coverage"
-    "TestResults"
-    "__pycache__"
-    ".agent-complete"
-    ".claude"
-    ".github"
-    "UAssetAPI"
-    "UAssetGUI"
-    "plans"
-    "static"
+SOURCE_ROOTS=(
+    "godot/scripts"
+    "godot/tests"
+    "svelte-ui/src"
+    "cef-gdext/src"
+    "cef-helper-rs/src"
+    "native/color-bridge/src"
 )
 
-# Directories that MUST have README files
-REQUIRED_README_DIRS=(
-    "godot/scripts/Models"
-    "godot/scripts/Cef"
-    "godot/scripts/Bridge"
-    "godot/scripts/Assets"
-    "godot/scripts/Rendering"
-    "godot/scripts/Agent"
-    "godot/scripts/Diff"
-    "svelte-ui/src/lib/bridge"
-    "svelte-ui/src/lib/components"
-    "svelte-ui/src/lib/view-models"
+EXCLUDED_NAMES=(
+    ".git"
+    ".godot"
+    ".launcher-state"
+    ".svelte-kit"
+    "bin"
+    "build"
+    "coverage"
+    "dist"
+    "node_modules"
+    "obj"
+    "target"
 )
 
 ERRORS=0
-WARNINGS=0
 
-# Build exclusion pattern for find
-build_exclude_pattern() {
-    local pattern=""
-    for dir in "${EXCLUDED_DIRS[@]}"; do
-        pattern="$pattern -not -path '*/$dir/*' -not -path '*/$dir'"
-    done
-    echo "$pattern"
-}
-
-# Check specific required directories
-check_required_dirs() {
-    echo "Checking required README directories..."
-
-    for dir in "${REQUIRED_README_DIRS[@]}"; do
-        if [ -d "$PROJECT_ROOT/$dir" ]; then
-            if [ ! -f "$PROJECT_ROOT/$dir/README.md" ]; then
-                echo -e "${RED}[ERROR]${NC} Missing required README: $dir/README.md"
-                ((ERRORS++))
-            else
-                echo -e "${GREEN}[OK]${NC} README exists: $dir/README.md"
-            fi
-        fi
-    done
-}
-
-# Check if a directory should be excluded
-is_excluded() {
-    local dir="$1"
-    for excluded in "${EXCLUDED_DIRS[@]}"; do
-        if [[ "$dir" == *"/$excluded"* ]] || [[ "$dir" == *"/$excluded" ]] || [[ "$dir" == "$excluded"* ]]; then
+is_excluded_name() {
+    local name="$1"
+    for excluded in "${EXCLUDED_NAMES[@]}"; do
+        if [[ "$name" == "$excluded" ]]; then
             return 0
         fi
     done
     return 1
 }
 
-# Main function
+check_source_root() {
+    local root="$1"
+
+    while IFS= read -r dir; do
+        if [[ ! -f "$dir/README.md" ]]; then
+            printf '%b[ERROR]%b Missing README: %s/README.md\n' "$RED" "$NC" "${dir#$PROJECT_ROOT/}"
+            ERRORS=$((ERRORS + 1))
+        fi
+    done < <(
+        find "$PROJECT_ROOT/$root" \
+            \( \
+                -name .git -o \
+                -name .godot -o \
+                -name .launcher-state -o \
+                -name .svelte-kit -o \
+                -name bin -o \
+                -name build -o \
+                -name coverage -o \
+                -name dist -o \
+                -name node_modules -o \
+                -name obj -o \
+                -name target \
+            \) -prune -o -type d -print | sort
+    )
+}
+
 main() {
-    echo "Validating README files..."
+    echo "Validating source directory READMEs..."
     echo "Project root: $PROJECT_ROOT"
-    echo ""
+    echo
 
-    # Check required directories
-    check_required_dirs
+    for root in "${SOURCE_ROOTS[@]}"; do
+        check_source_root "$root"
+    done
 
-    echo ""
-    echo "=== Validation Summary ==="
-
-    if [ $ERRORS -eq 0 ]; then
-        echo -e "${GREEN}All required READMEs present!${NC}"
+    echo
+    if [[ $ERRORS -eq 0 ]]; then
+        printf '%bAll source READMEs present.%b\n' "$GREEN" "$NC"
         exit 0
-    else
-        echo -e "${RED}$ERRORS missing README(s)${NC}"
-        echo ""
-        echo "Please add README.md files to the directories listed above."
-        echo "README template:"
-        echo ""
-        echo "  # Directory Name"
-        echo "  "
-        echo "  ## Purpose"
-        echo "  Brief description of what this directory contains."
-        echo "  "
-        echo "  ## Contents"
-        echo "  - \`File1.cs\` - Description"
-        echo "  - \`File2.cs\` - Description"
-        echo ""
-        exit 1
     fi
+
+    printf '%b%d README(s) missing.%b\n' "$RED" "$ERRORS" "$NC"
+    exit 1
 }
 
 main "$@"

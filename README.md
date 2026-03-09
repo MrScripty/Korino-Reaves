@@ -1,106 +1,68 @@
-Korino-Reaves is a fully rebuilt fork of UAssetGUI. It introduces cross platform compatibility, an entirly new and modern GUI, performance improvments, integrated asset 3D/2D viewer, and will be introducing an fully local AI agent and mod migration tools to make understanding, creating, and maintaining mods for the UnrealEngine 4+ faster and easier.
+# Korino-Reaves
 
-Below is the original UAssetGUI README:
+## Purpose
+Korino-Reaves is a Godot-based Unreal asset inspection and modding workbench. It combines a Svelte frontend, C# runtime/editor logic, Rust-backed CEF embedding, and Unreal asset parsing libraries so developers can inspect assets, diff versions, extract content, and automate repetitive workflows locally.
 
-# UAssetGUI
-[![Release](https://img.shields.io/github/v/release/atenfyr/UAssetGUI.svg?style=flat-square)](https://github.com/atenfyr/UAssetGUI/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/atenfyr/UAssetGUI/total.svg?style=flat-square)](https://github.com/atenfyr/UAssetGUI/releases)
-[![Issues](https://img.shields.io/github/issues/atenfyr/UAssetGUI.svg?style=flat-square)](https://github.com/atenfyr/UAssetGUI/issues)
-[![CI Status](https://img.shields.io/github/actions/workflow/status/atenfyr/UAssetGUI/build.yml?label=CI)](https://github.com/atenfyr/UAssetGUI/actions)
-[![License](https://img.shields.io/github/license/atenfyr/UAssetGUI.svg?style=flat-square)](https://github.com/atenfyr/UAssetGUI/blob/master/LICENSE.md)
+## Contents
+| File/Folder | Description |
+|-------------|-------------|
+| `launcher.sh` | Canonical install, build, run, test, and release-smoke entry point. |
+| `godot/` | Godot project, C# runtime, IPC handlers, rendering, and tests. |
+| `svelte-ui/` | Svelte UI and typed bridge contract consumer. |
+| `cef-gdext/` | Rust GDExtension that embeds CEF offscreen and bridges IPC/framebuffer updates. |
+| `cef-helper-rs/` | Helper executable required by the CEF embedding model. |
+| `native/` | Native bridge code and runtime assets that support rendering/color workflows. |
+| `scripts/` | Repo maintenance helpers, including README validation. |
 
-UAssetGUI is a tool designed for low-level examination and modification of Unreal Engine game assets by hand.
+## Problem
+Unreal modding workflows often force users to jump between separate asset viewers, diff tools, extractors, and undocumented manual steps. This repository exists to keep those operations in one locally runnable toolchain with explicit contracts between the UI, runtime, and native layers.
 
-<img src="https://i.imgur.com/cibmlbW.png" align="center">
+## Constraints
+- Unreal asset parsing depends on upstream libraries and version-specific behavior.
+- The UI must communicate across a process/runtime boundary through stable IPC messages.
+- CEF, Godot, .NET, Rust, and Node must coexist without corrupting operator state.
+- Linux and Windows are required supported platforms.
 
-## Installation
-You can find pre-built binaries of UAssetGUI in the [Releases tab of this repository](https://github.com/atenfyr/UAssetGUI/releases).
+## Decision
+Use Godot as the host runtime, Svelte for the UI, Rust for CEF/native integration, and `launcher.sh` as the canonical developer/operator workflow surface. Keep shared contracts explicit rather than letting the frontend and backend drift independently.
 
-## Command line arguments
-You can run the program with command line arguments to perform various tasks, such as exporting and importing from UAssetAPI JSON without opening the GUI.
+## Alternatives Rejected
+- Keep the upstream `UAssetGUI` workflow as the primary entry point: rejected because it does not represent the current architecture.
+- Split the UI and runtime into separate repos: rejected because contract changes are frequent and need atomic verification.
 
-In the following cases, the engine version can either be specified as an EngineVersion enum entry (e.g. `VER_UE4_23` to refer to 4.23, `VER_UE5_0` to refer to 5.0, etc.) or as an integer (e.g. `23` to refer to 4.23, `29` to refer to 5.0, etc.). Specifying a set of mappings is optional, but if specified, must be the name of a file within the Mappings config directory (with no extension).
+## Invariants
+- `launcher.sh` remains the canonical local workflow surface.
+- IPC contracts stay synchronized between `godot/scripts/Models` and `svelte-ui/src/lib/bridge`.
+- First-party verification must pass through frontend checks, Rust builds, and .NET build/test gates.
 
-### Export to JSON
-```
-UAssetGUI tojson <source> <destination> <engine version> [mappings name]
-```
+## Revisit Triggers
+- A second runtime host replaces Godot.
+- IPC contracts require versioning beyond the current single-repo model.
+- Release packaging becomes a first-class supported workflow again.
 
-Example 1: `UAssetGUI tojson A.uasset B.json VER_UE5_1`
+## Dependencies
+**Internal:** `godot/`, `svelte-ui/`, `cef-gdext/`, `cef-helper-rs/`, `native/`, `scripts/`.
+**External:** Godot 4, .NET 8+, Node.js 20+, Rust stable, CEF, UAssetAPI, CUE4Parse, Semantic Kernel.
 
-Example 2: `UAssetGUI tojson A.uasset B.json 27 Astro`
+## Related ADRs
+- None identified as of 2026-03-09.
+- Reason: the current repo documents architecture in module READMEs but does not yet maintain ADRs for these choices.
+- Revisit trigger: a breaking runtime, IPC, or packaging decision lands.
 
-### Import from JSON
-```
-UAssetGUI fromjson <source> <destination> [mappings name]
-```
-
-Example 1: `UAssetGUI fromjson B.json A.umap`
-
-Example 2: `UAssetGUI fromjson B.json A.umap Outriders`
-
-### Open a specific file in the GUI
-```
-UAssetGUI [file name] [engine version] [mappings name]
-```
-
-Example 1: `UAssetGUI` (to simply open the GUI without opening a file)
-
-Example 2: `UAssetGUI test.uasset`
-
-Example 3: `UAssetGUI test.uasset 23`
-
-Example 4: `UAssetGUI test.uasset VER_UE5_4 Bellwright`
-
-## Native Dependencies
-
-The AI agent module requires `libpumas_uniffi.so` from pumas-library for local model management. During development, this is symlinked from your local pumas-library build:
-
+## Usage Examples
 ```bash
-ln -sf /path/to/pumas-library/rust/target/release/libpumas_uniffi.so godot/libpumas_uniffi.so
+./launcher.sh --install
+./launcher.sh --build
+./launcher.sh --run
+./launcher.sh --test
 ```
 
-pumas-library should consider distributing pre-built native bindings via a package manager (NuGet, PyPI) in the future to simplify this setup.
+## API Consumer Contract
+- Operators and CI invoke repo workflows through `launcher.sh`.
+- Frontend/backend callers exchange messages through the typed IPC contract only.
+- Verification failures are blocking for commit, push, and CI flows.
 
-## Compilation
-
-If you'd like to compile UAssetGUI for yourself, read on:
-
-### Prerequisites
-
-* Visual Studio 2022 or later
-* Git
-
-### Initial Setup
-1. Clone the UAssetGUI repository:
-
-```sh
-git clone https://github.com/atenfyr/UAssetGUI.git
-```
-
-2. Switch to the new UAssetGUI directory:
-
-```sh
-cd UAssetGUI
-```
-
-3. Pull the required submodules:
-
-```sh
-git submodule update --init
-```
-
-4. Open the `UAssetGUI.sln` solution file in Visual Studio, right-click on the UAssetGUI project in the Solution Explorer, and click "Set as Startup Project."
-
-5. Right-click on the solution name in the Solution Explorer, and press "Restore Nuget Packages."
-
-6. Press the "Start" button or press F5 to compile and open UAssetGUI.
-
-## Contributing
-Any contributions, whether through pull requests or issues, that you make are greatly appreciated.
-
-If you have an Unreal Engine .uasset file that displays "failed to maintain binary equality," feel free to submit an issue on [the UAssetAPI issues page](https://github.com/atenfyr/UAssetAPI/issues) with a copy of the asset in question along with the name of the game, the Unreal version that it was cooked with, and a mappings file for the game, if needed.
-
-## License
-UAssetAPI and UAssetGUI are distributed under the MIT license, which you can view in detail in the [LICENSE file](LICENSE).
-
+## Structured Producer Contract
+- `godot/scripts/Models` and `svelte-ui/src/lib/bridge/types.ts` define the stable IPC payload shapes.
+- `godot/scripts/Agent/Generated` is generated output and must be regenerated rather than hand-edited.
+- `Cargo.lock` and `package-lock.json` are checked-in dependency contracts and must stay in sync with tool-managed dependency changes.
