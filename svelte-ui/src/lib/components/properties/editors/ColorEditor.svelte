@@ -36,9 +36,14 @@
             : { r, g, b, a: value.a };
     }
 
-    let hexValue = $state(toHex(value));
+    let hexValue = $state('');
     let hasAlpha = $derived('a' in value && value.a !== undefined);
-    let alpha = $state(String(value.a ?? 1));
+    let alpha = $state('');
+
+    $effect(() => {
+        hexValue = toHex(value);
+        alpha = String(value.a ?? 1);
+    });
 
     function handleColorChange(event: Event) {
         const target = event.target as HTMLInputElement;

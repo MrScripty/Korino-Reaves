@@ -76,9 +76,22 @@
             {/if}
 
             {#if title}
-                <h3 class="panel-title" onclick={toggleCollapse}>
-                    {title}
-                </h3>
+                {#if collapsible}
+                    <h3 class="panel-title">
+                        <button
+                            type="button"
+                            class="panel-title-button"
+                            onclick={toggleCollapse}
+                            aria-expanded={!isCollapsed}
+                        >
+                            {title}
+                        </button>
+                    </h3>
+                {:else}
+                    <h3 class="panel-title">
+                        {title}
+                    </h3>
+                {/if}
             {/if}
 
             {#if headerActions}
@@ -174,7 +187,15 @@
         font-size: var(--text-sm);
         font-weight: 600;
         color: var(--text-primary);
-        cursor: inherit;
+    }
+
+    .panel-title-button {
+        padding: 0;
+        background: none;
+        border: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
     }
 
     .header-actions {

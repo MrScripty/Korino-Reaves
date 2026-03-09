@@ -13,8 +13,12 @@
     let { value, onSubmit, onCancel }: Props = $props();
 
     // Transient UI state - editing value before submit
-    let editValue = $state(value);
+    let editValue = $state('');
     let inputRef = $state<HTMLInputElement | null>(null);
+
+    $effect(() => {
+        editValue = value;
+    });
 
     // Auto-focus on mount
     $effect(() => {

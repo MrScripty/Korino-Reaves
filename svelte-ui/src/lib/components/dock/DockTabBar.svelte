@@ -79,6 +79,7 @@
     class:drop-target={dock.isDragging && dock.dragOverZone === zoneId && dock.dragSourceZone !== zoneId}
     data-dock-zone={zoneId}
     role="tablist"
+    tabindex="-1"
     onmouseenter={handleMouseEnter}
     onmouseleave={handleMouseLeave}
 >

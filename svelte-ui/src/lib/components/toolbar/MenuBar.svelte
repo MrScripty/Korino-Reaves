@@ -204,7 +204,7 @@
 
 <svelte:window onclick={handleClickOutside} onkeydown={handleKeyDown} />
 
-<nav class="menu-bar" role="menubar">
+<div class="menu-bar" role="menubar">
     <div class="app-title">UAsset Viewer</div>
 
     {#each Object.entries(menus) as [menuName, items]}
@@ -278,7 +278,7 @@
             {/if}
         </div>
     {/each}
-</nav>
+</div>
 
 <style>
     .menu-bar {

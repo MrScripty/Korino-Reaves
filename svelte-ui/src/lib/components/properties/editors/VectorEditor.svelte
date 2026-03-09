@@ -26,10 +26,17 @@
     );
 
     // Transient UI state - editing values before submit
-    let x = $state(String(value.x));
-    let y = $state(String(value.y));
-    let z = $state(String(value.z ?? 0));
-    let w = $state(String(value.w ?? 0));
+    let x = $state('');
+    let y = $state('');
+    let z = $state('');
+    let w = $state('');
+
+    $effect(() => {
+        x = String(value.x);
+        y = String(value.y);
+        z = String(value.z ?? 0);
+        w = String(value.w ?? 0);
+    });
 
     function handleKeyDown(event: KeyboardEvent) {
         if (event.key === 'Enter') {
@@ -97,7 +104,7 @@
             />
         </label>
     {/if}
-    <button class="submit-button" onclick={submit}>
+    <button class="submit-button" onclick={submit} aria-label="Apply vector value">
         <svg viewBox="0 0 16 16" fill="currentColor">
             <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
         </svg>

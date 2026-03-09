@@ -16,9 +16,13 @@
     let { value, min, max, step = 1, onSubmit, onCancel }: Props = $props();
 
     // Transient UI state - editing value before submit
-    let editValue = $state(String(value));
+    let editValue = $state('');
     let inputRef = $state<HTMLInputElement | null>(null);
     let isValid = $derived(!isNaN(parseFloat(editValue)));
+
+    $effect(() => {
+        editValue = String(value);
+    });
 
     // Auto-focus on mount
     $effect(() => {

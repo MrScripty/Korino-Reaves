@@ -44,6 +44,17 @@
         return [v[0] / len, v[1] / len, v[2] / len];
     }
 
+    function handleAxisKeyDown(
+        event: KeyboardEvent,
+        yawTarget: number,
+        pitchTarget: number
+    ) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSnapView(yawTarget, pitchTarget);
+        }
+    }
+
     // Project world axes into screen space based on camera yaw/pitch
     let projected = $derived.by(() => {
         const y = yaw * DEG2RAD;
@@ -104,9 +115,10 @@
             opacity={0.3 + 0.15 * (1 - axis.depth)}
             class="axis-btn"
             role="button"
-            tabindex="-1"
+            tabindex="0"
             aria-label="{axis.name} negative"
             onclick={(e: MouseEvent) => { e.stopPropagation(); onSnapView(axis.negYaw, axis.negPitch); }}
+            onkeydown={(event) => handleAxisKeyDown(event, axis.negYaw, axis.negPitch)}
         />
 
         <!-- Positive end line -->
@@ -126,9 +138,10 @@
             opacity={0.6 + 0.4 * (1 + axis.depth) / 2}
             class="axis-btn"
             role="button"
-            tabindex="-1"
+            tabindex="0"
             aria-label="{axis.name} axis"
             onclick={(e: MouseEvent) => { e.stopPropagation(); onSnapView(axis.posYaw, axis.posPitch); }}
+            onkeydown={(event) => handleAxisKeyDown(event, axis.posYaw, axis.posPitch)}
         />
         <text
             x={axis.sx} y={axis.sy}

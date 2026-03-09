@@ -187,6 +187,7 @@
                                                                     class="expand-btn"
                                                                     onclick={() => deps.toggleNode(childRef.path)}
                                                                     class:loading={cLoading}
+                                                                    aria-label={cExpanded ? 'Collapse dependencies' : 'Expand dependencies'}
                                                                 >
                                                                     {#if cLoading}
                                                                         <svg class="spinner" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="20 12" /></svg>
@@ -218,6 +219,7 @@
                                                                                             <button
                                                                                                 class="expand-btn"
                                                                                                 onclick={() => deps.toggleNode(gcRef.path)}
+                                                                                                aria-label="Expand dependencies"
                                                                                             >
                                                                                                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z" /></svg>
                                                                                             </button>
@@ -437,10 +439,6 @@
         color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.05em;
-    }
-
-    .tree-node {
-        /* container for a node row + its children */
     }
 
     .node-row {

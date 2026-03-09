@@ -80,6 +80,13 @@
             onToggle?.(nodeId);
         }
     }
+
+    function handleNodeKeyDown(event: KeyboardEvent, nodeId: string, hasChildren: boolean) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleNodeClick(nodeId, hasChildren);
+        }
+    }
 </script>
 
 <div class="diff-tree">
@@ -97,7 +104,9 @@
             class:expanded={isExpanded}
             role="treeitem"
             aria-selected={isSelected}
+            tabindex={isSelected ? 0 : -1}
             onclick={() => handleNodeClick(node.id, node.hasChildren)}
+            onkeydown={(event) => handleNodeKeyDown(event, node.id, node.hasChildren)}
         >
             <!-- Change marker -->
             {#if markerColor}

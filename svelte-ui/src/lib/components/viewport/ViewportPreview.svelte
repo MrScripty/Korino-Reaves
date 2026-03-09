@@ -155,10 +155,16 @@
     onmouseup={handleMouseUp}
 />
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
     class="viewport-preview"
-    role="img"
+    role={viewport.hasPreview ? 'application' : 'img'}
     aria-label={viewport.assetName ?? 'Viewport preview'}
+    tabindex={viewport.hasPreview ? 0 : -1}
+    onmousedown={handleMouseDown}
+    onwheel={handleWheel}
+    ondblclick={handleDblClick}
+    oncontextmenu={handleContextMenu}
 >
     {#if viewport.isLoading}
         <div class="viewport-loading">
@@ -174,10 +180,6 @@
             class:mode-2d={!viewport.has3DControls}
             class:mode-3d={viewport.has3DControls}
             draggable="false"
-            onmousedown={handleMouseDown}
-            onwheel={handleWheel}
-            ondblclick={handleDblClick}
-            oncontextmenu={handleContextMenu}
         />
         <!-- 3D/Scene viewport toolbar -->
         {#if viewport.has3DControls}

@@ -245,16 +245,6 @@
         }
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-        if (event.key === 'Enter') {
-            if (mode === 'directory' || selectedEntry) {
-                handleSelect();
-            }
-        } else if (event.key === 'Escape') {
-            onCancel();
-        }
-    }
-
     function navigateUp() {
         const parent = currentPath.split('/').slice(0, -1).join('/') || '/';
         // Don't navigate above basePath if it's set
@@ -289,13 +279,15 @@
     onClose={onCancel}
     width="700px"
 >
-    <div class="file-browser" onkeydown={handleKeyDown}>
+    <div class="file-browser" role="group" aria-label={title}>
         <!-- Path bar -->
         <div class="path-bar">
             <button
                 class="nav-btn"
                 onclick={navigateUp}
                 disabled={currentPath === '/' || Boolean(basePath && currentPath === basePath)}
+                aria-label="Navigate up"
+                title="Navigate up"
             >
                 <svg viewBox="0 0 16 16" fill="currentColor">
                     <path d="M8 2l-6 6h4v6h4V8h4L8 2z"/>

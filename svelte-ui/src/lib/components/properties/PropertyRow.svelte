@@ -62,13 +62,14 @@
     class:edited={isEdited}
     style="padding-left: {depth * 16 + 8}px"
 >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
+    <button
+        type="button"
         class="property-name"
         class:has-children={hasChildren}
         class:expanded={isExpanded}
         title={property.path.join(' / ')}
         onclick={() => hasChildren && properties.togglePropertyExpand(pathKey)}
+        disabled={!hasChildren}
     >
         {#if hasChildren}
             <span class="expand-chevron" class:expanded={isExpanded}>
@@ -99,7 +100,7 @@
             {/if}
         </span>
         {displayName}
-    </div>
+    </button>
 
     <div class="property-value" style="color: {valueColor}">
         {#if isEditing}
@@ -170,7 +171,7 @@
     </div>
 </div>
 
-<script context="module" lang="ts">
+<script module lang="ts">
     function formatValue(value: unknown): string {
         if (value === null) return 'null';
         if (value === undefined) return 'undefined';

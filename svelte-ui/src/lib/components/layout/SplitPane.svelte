@@ -33,7 +33,11 @@
     }: Props = $props();
 
     // Transient UI state - OK for Svelte to own
-    let size = $state(initialSize);
+    let size = $state(0);
+
+    $effect(() => {
+        size = initialSize;
+    });
 </script>
 
 <div class="split-pane" class:horizontal={direction === 'horizontal'} class:vertical={direction === 'vertical'}>
