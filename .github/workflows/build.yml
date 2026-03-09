@@ -1,77 +1,79 @@
 name: CI
+
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches:
       - master
-    paths-ignore:
-      - ".github/**"
-      - ".gitignore"
-      - "*.md"
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
     env:
-      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+      DOTNET_NOLOGO: 1
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
 
-    - name: .NET Setup
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: '8.0.x'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: svelte-ui/package-lock.json
 
-    - name: Fetch submodules
-      run: git submodule update --init --recursive
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1.1
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Setup NuGet
-      uses: NuGet/setup-nuget@v1.0.2
+      - name: Install frontend dependencies
+        run: |
+          cd svelte-ui
+          npm ci --legacy-peer-deps
 
-    - name: Navigate to workspace
-      run: cd $GITHUB_WORKSPACE
+      - name: Restore .NET dependencies
+        run: |
+          dotnet restore godot/UAssetViewer.csproj
+          dotnet restore godot/tests/UAssetViewer.Tests.csproj
 
-    - name: Restore packages
-      run: nuget restore UAssetGUI.sln
+      - name: Verify frontend
+        run: |
+          cd svelte-ui
+          npm run check
+          npx tsc --noEmit
 
-    - name: Build All
-      run: msbuild UAssetGUI.sln /p:Configuration=ReleaseX
+      - name: Build Rust runtime crates
+        run: |
+          cargo build --manifest-path cef-gdext/Cargo.toml --locked
+          cargo build --manifest-path cef-helper-rs/Cargo.toml --locked
 
-    - name: Build Publish Binary
-      run: dotnet publish --sc false -c ReleaseX -r win-x64 -p:PublishSingleFile=true -o ./build ./UAssetGUI/UAssetGUI.csproj
+      - name: Build .NET solution
+        run: dotnet build UAssetViewer.slnx --configuration Debug --no-restore
 
-    - name: Get Short SHA
-      id: vars
-      shell: bash
-      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-    - name: Get Project Version
-      uses: bbonkr/get-version-action@v1
-      id: get_version
-      with:
-        project: './UAssetGUI/UAssetGUI.csproj'
-        show_log_message: true
-
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v4.6.1
-      with:
-          name: v${{ steps.get_version.outputs.version }}-experimental-${{ steps.vars.outputs.sha_short }}
-          path: ./build/*.exe
-
-    - name: Make Experimental Pre-Release
-      uses: softprops/action-gh-release@v2
-      with:
-        prerelease: true
-        tag_name: experimental-latest
-        name: v${{ steps.get_version.outputs.version }}-experimental-${{ steps.vars.outputs.sha_short }}
-        files: ./build/*.exe
+      - name: Run .NET tests
+        run: dotnet test godot/tests/UAssetViewer.Tests.csproj --no-restore
