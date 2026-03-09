@@ -51,7 +51,6 @@ wrap_display_handler! {
                         .shared
                         .ipc_messages
                         .lock()
-                        .unwrap()
                         .push(json_str.to_string());
 
                     // Mark dirty for UI-triggered repaints

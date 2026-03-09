@@ -29,6 +29,8 @@ public sealed class IpcDispatcher : IDisposable
     };
 
     private readonly Dictionary<string, IMessageHandler> _handlers = new();
+    private readonly HashSet<Task> _inFlightDispatches = new();
+    private readonly object _dispatchLock = new();
     private readonly IAppLogger _logger;
     private readonly AssetManager _assetManager;
     private Node? _cefNode;
@@ -240,8 +242,42 @@ public sealed class IpcDispatcher : IDisposable
         }
 
         _logger.Info("[IpcDispatcher] Parsed message: type={Type}, action={Action}", message!.Type, message.Action);
-        // Fire and forget - dispatch asynchronously
-        _ = DispatchAsync(message);
+        StartDispatch(message);
+    }
+
+    private void StartDispatch(IpcMessage message)
+    {
+        var task = DispatchAsync(message);
+
+        lock (_dispatchLock)
+        {
+            _inFlightDispatches.Add(task);
+        }
+
+        _ = ObserveDispatchAsync(task, message);
+    }
+
+    private async Task ObserveDispatchAsync(Task task, IpcMessage message)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            _logger.Debug("Dropped IPC dispatch for {Type}/{Action} during disposal", message.Type, message.Action);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Unhandled IPC dispatch failure for {Type}/{Action}", message.Type, message.Action);
+        }
+        finally
+        {
+            lock (_dispatchLock)
+            {
+                _inFlightDispatches.Remove(task);
+            }
+        }
     }
 
     public void Dispose()
@@ -259,5 +295,9 @@ public sealed class IpcDispatcher : IDisposable
         }
 
         _handlers.Clear();
+        lock (_dispatchLock)
+        {
+            _inFlightDispatches.Clear();
+        }
     }
 }

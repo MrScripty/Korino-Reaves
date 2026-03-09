@@ -46,7 +46,7 @@ public partial class MainController : Node
     private TextureRect? _overlay;
     private bool _browserCreated;
 
-    public override void _Ready()
+    public override async void _Ready()
     {
         _logger = AppLogger.Instance;
         using var scope = _logger.BeginScope("MainController._Ready");
@@ -60,7 +60,7 @@ public partial class MainController : Node
             InitializeCef();
 
             // Create browser
-            CreateBrowser();
+            await CreateBrowserAsync();
 
             // Set up IPC dispatcher
             SetupDispatcher();
@@ -151,7 +151,7 @@ public partial class MainController : Node
         }
     }
 
-    private void CreateBrowser()
+    private async Task CreateBrowserAsync()
     {
         if (_cefNode == null)
         {
@@ -173,7 +173,7 @@ public partial class MainController : Node
         {
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromMilliseconds(1000);
-            var response = client.GetAsync(devServerUrl).Result;
+            using var response = await client.GetAsync(devServerUrl);
             if (response.IsSuccessStatusCode)
             {
                 useDevServer = true;

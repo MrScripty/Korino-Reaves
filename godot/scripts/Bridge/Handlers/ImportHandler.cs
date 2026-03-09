@@ -22,6 +22,7 @@ public sealed class ImportHandler : IMessageHandler
     private readonly IpcDispatcher _dispatcher;
     private readonly AssetImporter _importer;
     private CancellationTokenSource? _importCts;
+    private Task? _currentImportTask;
 
     public string MessageType => MessageTypes.Import;
 
@@ -54,7 +55,7 @@ public sealed class ImportHandler : IMessageHandler
 
     private Task<IpcMessage?> HandleStart(IpcMessage message)
     {
-        if (_importer.IsImporting)
+        if (_importer.IsImporting || (_currentImportTask != null && !_currentImportTask.IsCompleted))
         {
             return Task.FromResult<IpcMessage?>(CreateErrorResponse(message, "Import already in progress"));
         }
@@ -68,8 +69,7 @@ public sealed class ImportHandler : IMessageHandler
         var projectPath = projectHandler.CurrentProject.Path;
         var gameVersionStr = projectHandler.EffectiveGameVersion.ToString();
 
-        // Fire and forget — progress is reported via IPC
-        _ = Task.Run(() => RunImportAsync(projectPath, gameVersionStr));
+        StartImportInBackground(projectPath, gameVersionStr);
 
         return Task.FromResult<IpcMessage?>(new IpcMessage(
             MessageTypes.Import,
@@ -136,9 +136,67 @@ public sealed class ImportHandler : IMessageHandler
     /// </summary>
     public async Task RunImportAsync(string projectPath, string? gameVersionStr)
     {
+        var task = StartImportTask(projectPath, gameVersionStr);
+        await AwaitOwnedImportAsync(task);
+    }
+
+    private void StartImportInBackground(string projectPath, string? gameVersionStr)
+    {
+        var task = StartImportTask(projectPath, gameVersionStr);
+        _ = ObserveBackgroundImportAsync(task, projectPath);
+    }
+
+    private Task StartImportTask(string projectPath, string? gameVersionStr)
+    {
         _importCts?.Cancel();
+        _importCts?.Dispose();
         _importCts = new CancellationTokenSource();
-        var ct = _importCts.Token;
+        _currentImportTask = RunImportCoreAsync(projectPath, gameVersionStr, _importCts.Token);
+        return _currentImportTask;
+    }
+
+    private async Task AwaitOwnedImportAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        finally
+        {
+            ClearImportTask(task);
+        }
+    }
+
+    private async Task ObserveBackgroundImportAsync(Task task, string projectPath)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Unhandled background import failure for {ProjectPath}", projectPath);
+        }
+        finally
+        {
+            ClearImportTask(task);
+        }
+    }
+
+    private void ClearImportTask(Task task)
+    {
+        if (!ReferenceEquals(_currentImportTask, task))
+        {
+            return;
+        }
+
+        _currentImportTask = null;
+        _importCts?.Dispose();
+        _importCts = null;
+    }
+
+    private async Task RunImportCoreAsync(string projectPath, string? gameVersionStr, CancellationToken ct)
+    {
 
         try
         {

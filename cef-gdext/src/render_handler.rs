@@ -32,7 +32,7 @@ wrap_render_handler! {
     impl RenderHandler {
         fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
             if let Some(rect) = rect {
-                let size = self.handler.shared.size.lock().unwrap();
+                let size = self.handler.shared.size.lock();
                 rect.x = 0;
                 rect.y = 0;
                 rect.width = size.0 as c_int;
@@ -67,8 +67,8 @@ wrap_render_handler! {
             // Copy BGRA buffer and wrap in Arc for zero-copy sharing
             let buffer_copy = Arc::new(bgra.to_vec());
 
-            *self.handler.shared.framebuffer.lock().unwrap() = Some(buffer_copy);
-            *self.handler.shared.framebuffer_size.lock().unwrap() = (width, height);
+            *self.handler.shared.framebuffer.lock() = Some(buffer_copy);
+            *self.handler.shared.framebuffer_size.lock() = (width, height);
             self.handler.shared.dirty.store(true, Ordering::SeqCst);
         }
     }

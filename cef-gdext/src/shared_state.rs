@@ -7,7 +7,9 @@
 // - IPC message queue from console.log interception
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 pub struct SharedState {
     /// BGRA pixel data wrapped in Arc for zero-copy sharing.
@@ -40,19 +42,19 @@ impl SharedState {
         if !self.dirty.swap(false, Ordering::SeqCst) {
             return None;
         }
-        let buffer = self.framebuffer.lock().unwrap().clone()?;
-        let (w, h) = *self.framebuffer_size.lock().unwrap();
+        let buffer = self.framebuffer.lock().clone()?;
+        let (w, h) = *self.framebuffer_size.lock();
         Some((buffer, w, h))
     }
 
     /// Check if any framebuffer data exists
     pub fn has_framebuffer(&self) -> bool {
-        self.framebuffer.lock().unwrap().is_some()
+        self.framebuffer.lock().is_some()
     }
 
     /// Drain all pending IPC messages
     pub fn drain_ipc_messages(&self) -> Vec<String> {
-        let mut msgs = self.ipc_messages.lock().unwrap();
+        let mut msgs = self.ipc_messages.lock();
         std::mem::take(&mut *msgs)
     }
 }

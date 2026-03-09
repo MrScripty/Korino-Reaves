@@ -291,7 +291,7 @@ impl CefBrowserNode {
     #[func]
     fn resize(&mut self, width: i32, height: i32) {
         if let Some(shared) = &self.shared {
-            *shared.size.lock().unwrap() = (width as u32, height as u32);
+            *shared.size.lock() = (width as u32, height as u32);
         }
         if let Some(browser) = &self.browser {
             if let Some(host) = browser.host() {

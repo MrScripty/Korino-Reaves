@@ -90,7 +90,7 @@ public sealed class MaterialExtractor
             var matIndex = sections[i].MaterialIndex;
             if (materialTasks.TryGetValue(matIndex, out var task))
             {
-                results[i] = task.Result;
+                results[i] = await task;
             }
         }
 
@@ -171,11 +171,11 @@ public sealed class MaterialExtractor
 
             await Task.WhenAll(diffuseTask, normalTask, specularTask, emissiveTask, opacityTask);
 
-            var diffuseImage = diffuseTask.Result;
-            var normalImage = normalTask.Result;
-            var specularImage = specularTask.Result;
-            var emissiveImage = emissiveTask.Result;
-            var opacityImage = opacityTask.Result;
+            var diffuseImage = await diffuseTask;
+            var normalImage = await normalTask;
+            var specularImage = await specularTask;
+            var emissiveImage = await emissiveTask;
+            var opacityImage = await opacityTask;
 
             // Build the Godot material
             var godotMaterial = BuildStandardMaterial3D(

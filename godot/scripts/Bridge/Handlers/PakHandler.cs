@@ -55,6 +55,8 @@ public sealed class PakHandler : IMessageHandler
     private readonly IpcDispatcher _dispatcher;
     private readonly PakManager _pakManager;
     private CancellationTokenSource? _extractionCts;
+    private Task? _extractionTask;
+    private Task? _postExtractionTask;
     private bool _isExtracting;
 
     public string MessageType => MessageTypes.Pak;
@@ -131,8 +133,8 @@ public sealed class PakHandler : IMessageHandler
             _extractionCts = new CancellationTokenSource();
             _isExtracting = true;
 
-            // Fire and forget - we'll send progress updates via IPC
-            _ = ExtractAsync(request, message.Id, _extractionCts.Token);
+            _extractionTask = ExtractAsync(request, message.Id, _extractionCts.Token);
+            _ = ObserveExtractionAsync(_extractionTask, request.PakPath);
 
             // Return immediate acknowledgment
             return new IpcMessage(
@@ -283,8 +285,13 @@ public sealed class PakHandler : IMessageHandler
             // Let the runtime and OS reclaim buffers from extraction before scanning
             await Task.Delay(500);
 
-            // Build dependency graph in background (non-blocking)
-            _ = BuildDependencyGraphAsync(outputDir, request.GameVersion);
+            _postExtractionTask = BuildDependencyGraphAsync(outputDir, request.GameVersion);
+            _ = ObservePostExtractionAsync(_postExtractionTask, outputDir);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Info("Extraction cancelled");
+            SendCancelled(requestId);
         }
         catch (Exception ex)
         {
@@ -296,6 +303,44 @@ public sealed class PakHandler : IMessageHandler
             _isExtracting = false;
             _extractionCts?.Dispose();
             _extractionCts = null;
+        }
+    }
+
+    private async Task ObserveExtractionAsync(Task task, string pakPath)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Unhandled extraction failure for {PakPath}", pakPath);
+        }
+        finally
+        {
+            if (ReferenceEquals(_extractionTask, task))
+            {
+                _extractionTask = null;
+            }
+        }
+    }
+
+    private async Task ObservePostExtractionAsync(Task task, string outputDir)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Unhandled post-extraction pipeline failure for {Path}: {Error}", outputDir, ex.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(_postExtractionTask, task))
+            {
+                _postExtractionTask = null;
+            }
         }
     }
 
